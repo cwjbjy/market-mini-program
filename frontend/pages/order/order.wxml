@@ -1,0 +1,46 @@
+<view class="orders-page">
+  <view wx:if="{{loadError && orders.length}}" class="orders-warning panel">
+    <text>{{loadError}}</text>
+    <button class="quiet" bindtap="loadOrders">重试</button>
+  </view>
+
+  <view wx:if="{{orders.length}}" class="orders-list">
+    <view wx:for="{{orders}}" wx:key="id" class="order-card panel">
+      <view class="order-card__head">
+        <view class="order-card__mark"><t-icon name="file" size="36rpx" /></view>
+        <text class="order-card__date">{{item.date}}</text>
+        <text class="order-card__status">已完成</text>
+      </view>
+      <view class="order-card__body">
+        <view wx:for="{{item.items}}" wx:for-item="recipe" wx:key="rowKey" class="order-item">
+          <view class="order-item__image image-placeholder" data-url="{{recipe.imageUrl}}" bindtap="showImage">
+            <image wx:if="{{recipe.imageUrl}}" src="{{recipe.imageUrl}}" mode="aspectFill" lazy-load />
+            <t-icon wx:else name="image" size="34rpx" />
+          </view>
+          <view class="order-item__name">
+            <text>{{recipe.name}}</text>
+            <text class="order-item__ingredients">{{recipe.ingredients}}</text>
+          </view>
+          <text class="order-item__quantity">×{{recipe.quantity}}</text>
+        </view>
+      </view>
+      <view class="order-card__foot">
+        <text>{{item.items.length}} 道 · 共 {{item.quantity}} 份</text>
+        <button class="quiet delete-button" disabled="{{!!deletingId}}" data-id="{{item.id}}" bindtap="removeOrder"
+          loading="{{deletingId === item.id}}">
+          <t-icon name="delete" size="30rpx" />
+          删除
+        </button>
+      </view>
+    </view>
+    <text class="orders-end">最多展示最近 50 条</text>
+  </view>
+
+  <view wx:else class="state orders-empty">
+    <image class="orders-empty__image" src="/static/order/empty-order.png" mode="aspectFit" />
+    <text class="state__title">{{loading ? '正在加载订单' : loadError ? '订单加载失败' : '暂无订单'}}</text>
+    <text wx:if="{{loadError}}" class="state__description">{{loadError}}</text>
+    <button wx:if="{{loadError}}" class="secondary" bindtap="loadOrders">重试</button>
+    <button wx:elif="{{!loading}}" class="secondary" bindtap="goHome">去点单</button>
+  </view>
+</view>

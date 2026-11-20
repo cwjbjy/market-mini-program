@@ -1,0 +1,14 @@
+**
+!.dockerignore
+!Dockerfile
+!backend/
+!backend/pom.xml
+!backend/src/
+!backend/src/main/
+!backend/src/main/**
+!docker/
+!docker/market-entrypoint.sh
+**/*.archive
+**/*.bson
+**/*.gz
+**/*.zip

@@ -1,0 +1,10 @@
+.editor { display: flex; flex-direction: column; gap: 20rpx; padding: 24rpx 24rpx calc(30rpx + env(safe-area-inset-bottom)); }
+.editor-panel { padding: 25rpx; }
+.editor-fields { display: flex; flex-direction: column; gap: 26rpx; }
+.photo { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11rpx; width: 100%; height: 322rpx; border-radius: 22rpx; }
+.photo--choose { border: 2rpx dashed #CAAA97; background: #F5ECE4; color: var(--brand); line-height: 1.45; }
+.photo__hint { color: var(--muted); font-size: 25rpx; font-weight: 400; }
+.photo-replace { min-height: 68rpx; margin: 16rpx 0 0 auto; }
+.field--picker text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field--steps { height: 240rpx; }
+.editor-submit .form-error { margin-bottom: 14rpx; }

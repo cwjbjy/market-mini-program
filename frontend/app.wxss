@@ -1,0 +1,69 @@
+page {
+  --ink: #342219;
+  --muted: #775E50;
+  --paper: #FAF6F1;
+  --surface: #FFFFFF;
+  --line: #EBDDD1;
+  --brand: #B74935;
+  --brand-light: #FBEAE1;
+  --td-brand-color: #B74935;
+  --td-brand-color-light: #FBEAE1;
+  box-sizing: border-box;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 28rpx;
+}
+view, button, input, textarea, image, scroll-view { box-sizing: border-box; }
+button { margin: 0; font-size: inherit; }
+button::after { border: none; }
+.primary, .secondary, .quiet, .danger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  min-height: 84rpx;
+  padding: 0 28rpx;
+  border-radius: 24rpx;
+  line-height: 1.25;
+  font-weight: 600;
+}
+.primary { background: var(--brand); color: #FFF; }
+.primary[disabled] { background: #BFAEA4; color: #FFF; }
+.secondary { background: var(--brand-light); color: var(--brand); }
+.quiet { background: transparent; color: var(--muted); }
+.danger { background: #FCEDEA; color: #A13F2D; }
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18rpx;
+  padding: 96rpx 32rpx;
+  text-align: center;
+}
+.state__title { font-size: 34rpx; font-weight: 700; }
+.state__description { color: var(--muted); font-size: 26rpx; line-height: 1.55; }
+.panel { border-radius: 28rpx; background: var(--surface); }
+.form-label { display: block; margin-bottom: 14rpx; font-size: 28rpx; font-weight: 700; }
+.field {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 20rpx;
+  background: #FFFDFB;
+  color: var(--ink);
+}
+.field--area { height: 180rpx; padding: 20rpx 22rpx; line-height: 1.55; }
+.field--picker { display: flex; align-items: center; justify-content: space-between; }
+.field--placeholder { color: #826C5B; }
+.image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #EFE4D9;
+  color: #775E50;
+}
+.image-placeholder image { width: 100%; height: 100%; }
+.form-error { display: block; color: #983E2E; font-size: 26rpx; line-height: 1.5; }

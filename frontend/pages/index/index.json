@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "爱情厨房",
+  "usingComponents": {
+    "t-popup": "tdesign-miniprogram/popup/popup",
+    "t-stepper": "tdesign-miniprogram/stepper/stepper",
+    "t-swipe-cell": "tdesign-miniprogram/swipe-cell/swipe-cell"
+  },
+  "disableScroll": true
+}

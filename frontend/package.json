@@ -1,0 +1,12 @@
+{
+  "name": "market-mini-program",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node tests/market.test.js",
+    "check": "node tools/check-project.js"
+  },
+  "dependencies": {
+    "tdesign-miniprogram": "1.18.0"
+  }
+}

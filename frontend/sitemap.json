@@ -1,0 +1,9 @@
+{
+  "desc": "爱情厨房页面索引配置",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "*"
+    }
+  ]
+}

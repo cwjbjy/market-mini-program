@@ -1,0 +1,10 @@
+/.idea/
+/.vscode/
+/.verification/
+/local/
+/.env
+/backend/target/
+/backend/local/
+/frontend/node_modules/
+/frontend/miniprogram_npm/
+/frontend/project.private.config.json

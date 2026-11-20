@@ -1,0 +1,54 @@
+<view wx:if="{{loading || loadError}}" class="state">
+  <text class="state__title">{{loading ? '正在加载' : '菜谱无法编辑'}}</text>
+  <text wx:if="{{loadError}}" class="state__description">{{loadError}}</text>
+  <button wx:if="{{loadError}}" class="secondary" bindtap="loadForm">重试</button>
+</view>
+
+<view wx:else class="editor">
+  <view class="editor-panel panel">
+    <text class="form-label">菜谱图片</text>
+    <view wx:if="{{localImage || imageUrl}}" class="photo image-placeholder" bindtap="showPhoto" role="button" aria-label="预览菜谱图片">
+      <image src="{{localImage || imageUrl}}" mode="aspectFill" />
+    </view>
+    <button wx:if="{{!localImage && !imageUrl}}" class="photo photo--choose" bindtap="selectPhoto" disabled="{{saving}}">
+      <t-icon name="image" size="56rpx" />
+      <text>选择图片</text>
+      <text class="photo__hint">JPG 或 PNG，最多 10 MB</text>
+    </button>
+    <button wx:else class="secondary photo-replace" bindtap="selectPhoto" disabled="{{saving}}">更换图片</button>
+  </view>
+
+  <view class="editor-panel panel editor-fields">
+    <view>
+      <text class="form-label">所属分类</text>
+      <picker wx:if="{{categories.length}}" range="{{categories}}" range-key="name"
+        value="{{categoryIndex < 0 ? 0 : categoryIndex}}" disabled="{{saving}}" bindchange="selectCategory">
+        <view class="field field--picker {{categoryIndex < 0 ? 'field--placeholder' : ''}}" role="button">
+          <text>{{categoryIndex < 0 ? '选择分类' : categories[categoryIndex].name}}</text>
+          <t-icon name="chevron-down" size="35rpx" />
+        </view>
+      </picker>
+      <button wx:else class="secondary" bindtap="openCategories" disabled="{{saving}}">先创建分类</button>
+    </view>
+    <view>
+      <text class="form-label">菜名</text>
+      <input class="field" value="{{form.name}}" maxlength="80" data-field="name" aria-label="菜名"
+        disabled="{{saving}}" bindinput="updateInput" placeholder="输入菜名" />
+    </view>
+    <view>
+      <text class="form-label">食材配料</text>
+      <textarea class="field field--area" value="{{form.ingredients}}" maxlength="200" data-field="ingredients" aria-label="食材配料"
+        disabled="{{saving}}" bindinput="updateInput" placeholder="例如 鸡蛋、番茄、葱花" />
+    </view>
+    <view>
+      <text class="form-label">制作步骤</text>
+      <textarea class="field field--area field--steps" value="{{form.steps}}" maxlength="500" data-field="steps" aria-label="制作步骤"
+        disabled="{{saving}}" bindinput="updateInput" placeholder="写下制作过程" />
+    </view>
+  </view>
+
+  <view class="editor-submit">
+    <text wx:if="{{formError}}" class="form-error" aria-live="polite">{{formError}}</text>
+    <button class="primary" loading="{{saving}}" disabled="{{saving || !categories.length}}" bindtap="saveRecipe">保存菜谱</button>
+  </view>
+</view>

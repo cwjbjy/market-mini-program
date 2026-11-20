@@ -1,0 +1,152 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const api = require('../lib/api');
+const cart = require('../lib/cart');
+const { filterCategories } = require('../lib/search');
+
+test('search retains all categories for whitespace and matches partial names or one edit', () => {
+  const categories = [
+    { id: '1', recipes: [{ name: '红烧肉' }, { name: '清蒸鲈鱼' }] },
+    { id: '2', recipes: [{ name: '西红柿炒蛋' }] },
+    { id: '3', recipes: [] },
+  ];
+
+  assert.equal(filterCategories(categories, '  '), categories);
+  for (const query of ['红烧', '红绕肉', '红烧五肉', '红肉']) {
+    assert.deepEqual(filterCategories(categories, query).map((category) => category.recipes), [[{ name: '红烧肉' }]]);
+  }
+  assert.deepEqual(filterCategories(categories, '青蒸桂鱼'), []);
+});
+
+function mockCartStorage() {
+  const disk = new Map();
+  global.wx = {
+    getStorageSync: (key) => structuredClone(disk.get(key)),
+    setStorageSync: (key, value) => disk.set(key, structuredClone(value)),
+  };
+}
+
+test('cart stores a stable checkout snapshot through retry and resets only after acceptance', () => {
+  mockCartStorage();
+  cart.replaceQuantity('recipe:B', 5);
+  cart.replaceQuantity('recipe:A', 2);
+  const first = cart.prepareOrder();
+  assert.deepEqual(first.items, [{ recipeId: 'recipe:A', quantity: 2 }, { recipeId: 'recipe:B', quantity: 5 }]);
+  assert.match(first.requestId, /^[A-Za-z0-9._-]+$/);
+
+  delete require.cache[require.resolve('../lib/cart')];
+  const relaunchedCart = require('../lib/cart');
+  assert.deepEqual(relaunchedCart.prepareOrder(), first);
+  assert.throws(() => relaunchedCart.replaceQuantity('recipe:A', 1), /上一次/);
+  assert.throws(() => relaunchedCart.clear(), /上一次/);
+  relaunchedCart.acceptOrder('unrelated');
+  assert.deepEqual(relaunchedCart.read().items, first.items);
+  relaunchedCart.acceptOrder(first.requestId);
+  assert.deepEqual(relaunchedCart.read(), { pending: null, items: [] });
+});
+
+test('an explicitly rejected order keeps selected items editable', () => {
+  mockCartStorage();
+  cart.replaceQuantity('one', 2);
+  const first = cart.prepareOrder();
+  cart.clearPending(first.requestId);
+  cart.replaceQuantity('one', 1);
+  const retry = cart.prepareOrder();
+  assert.notEqual(first.requestId, retry.requestId);
+  assert.deepEqual(retry.items, [{ recipeId: 'one', quantity: 1 }]);
+});
+
+test('request handles HTTP 201, preserves ambiguous failure, and validates HTTP and business statuses', async () => {
+  let response;
+  const requests = [];
+  global.wx = {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    request: (options) => {
+      requests.push(options);
+      options.success(response);
+    },
+  };
+
+  response = { statusCode: 201, data: { code: 0, data: { id: 'order:test' } } };
+  assert.deepEqual(await api.createOrder({ requestId: 'test' }), { id: 'order:test' });
+  response = { statusCode: 200, data: { code: 0, data: null } };
+  await api.deleteOrder('order:test');
+  assert.equal(requests.at(-1).url, 'http://127.0.0.1:8080/api/orders/order%3Atest');
+
+  response = { statusCode: 503, data: { code: 0, data: null } };
+  await assert.rejects(api.getCategories(), { status: 503, definitive: false });
+  response = { statusCode: 404, data: { code: 404, message: '菜谱不存在' } };
+  await assert.rejects(api.getRecipe('invalid'), { message: '菜谱不存在', status: 404, definitive: true });
+  response = { statusCode: 404, data: '<html>Gateway error</html>' };
+  await assert.rejects(api.getOrders(), { status: 404, definitive: false });
+  response = { statusCode: 200, data: { code: 1, message: '操作失败' } };
+  await assert.rejects(api.getCategories(), { message: '操作失败', status: 200, definitive: false });
+
+  global.wx.request = (options) => options.fail({ errMsg: 'timeout' });
+  await assert.rejects(api.getOrders(), /网络连接失败/);
+});
+
+test('upload parses multipart response and normalizes image paths separately from API paths', async () => {
+  global.wx = {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    uploadFile: (options) => {
+      assert.equal(options.url, 'http://127.0.0.1:8080/api/images');
+      assert.equal(options.name, 'file');
+      options.success({ statusCode: 201, data: '{"code":0,"data":{"path":"/static/images/market/test.jpg"}}' });
+    },
+  };
+
+  const path = await api.uploadImage('wxfile://picked.jpg');
+  assert.equal(api.mediaUrl(path), 'http://127.0.0.1:8080/static/images/market/test.jpg');
+  assert.equal(api.mediaUrl('https://example.test/legacy.png'), 'https://example.test/legacy.png');
+  assert.equal(api.mediaUrl('//example.test/legacy.png'), '');
+});
+
+test('trial and release do not silently use the local API', async () => {
+  global.wx = {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'trial' } }),
+    request: () => assert.fail('missing trial origin must prevent sending a request'),
+  };
+  await assert.rejects(api.getCategories(), /请配置当前版本/);
+});
+
+test('home reuses the last request after a timeout and switches tabs only after success', async () => {
+  mockCartStorage();
+  cart.replaceQuantity('recipe:one', 2);
+  const requests = [];
+  const tabs = [];
+  Object.assign(global.wx, {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    request: (request) => {
+      requests.push(request.data);
+      if (requests.length === 1) request.fail({ errMsg: 'timeout' });
+      else request.success({ statusCode: 201, data: { code: 0, data: { id: 'order:new' } } });
+    },
+    showToast: () => {},
+    switchTab: (options) => tabs.push(options.url),
+  });
+
+  let page;
+  global.Page = (definition) => {
+    page = { ...definition, data: structuredClone(definition.data) };
+    page.setData = (patch, callback) => {
+      Object.assign(page.data, patch);
+      if (callback) callback();
+    };
+  };
+  require('../pages/index/index');
+  delete global.Page;
+  page.onLoad();
+  page.categories = [{ id: 'category', recipes: [{ id: 'recipe:one', name: '番茄炒蛋' }] }];
+  page.renderCatalog();
+
+  await page.submitOrder();
+  assert.equal(page.data.cartPending, true);
+  assert.equal(page.data.totalQuantity, 2);
+  assert.deepEqual(tabs, []);
+
+  await page.submitOrder();
+  assert.deepEqual(requests[1], requests[0]);
+  assert.equal(page.data.totalQuantity, 0);
+  assert.deepEqual(tabs, ['/pages/order/order']);
+});

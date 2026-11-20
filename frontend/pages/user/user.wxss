@@ -1,0 +1,10 @@
+.account { padding: 30rpx 26rpx; }
+.account-header { position: relative; overflow: hidden; display: flex; align-items: center; gap: 24rpx; min-height: 208rpx; padding: 32rpx; border-radius: 30rpx; background: linear-gradient(115deg, #A83E2D, #C96048); color: #FFF8F2; }
+.account-header::after { content: ''; position: absolute; right: -65rpx; top: -115rpx; width: 295rpx; height: 295rpx; border: 3rpx solid rgba(255, 255, 255, .25); border-radius: 50%; }
+.account-avatar { width: 120rpx; height: 120rpx; border: 5rpx solid rgba(255, 255, 255, .65); border-radius: 50%; }
+.account-title { font-size: 42rpx; font-weight: 700; }
+.account-links { margin-top: 22rpx; padding: 0 24rpx; }
+.account-link { display: flex; align-items: center; gap: 18rpx; width: 100%; min-height: 104rpx; padding: 0; background: transparent; color: var(--muted); border-radius: 0; }
+.account-link + .account-link { border-top: 1rpx solid var(--line); }
+.account-link__icon { display: flex; align-items: center; justify-content: center; width: 62rpx; height: 62rpx; border-radius: 18rpx; background: var(--brand-light); color: var(--brand); }
+.account-link__title { flex: 1; text-align: left; color: var(--ink); font-weight: 600; }
