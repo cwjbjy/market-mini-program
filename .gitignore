@@ -4,7 +4,12 @@
 /local/
 /.env
 /backend/target/
-/backend/local/
+/backend/local/*
+!/backend/local/uploads/
+/backend/local/uploads/*
+!/backend/local/uploads/*.[jJ][pP][gG]
+!/backend/local/uploads/*.[jJ][pP][eE][gG]
+!/backend/local/uploads/*.[pP][nN][gG]
 /frontend/node_modules/
 /frontend/miniprogram_npm/
 /frontend/project.private.config.json
