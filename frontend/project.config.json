@@ -14,6 +14,10 @@
       {
         "value": "tools",
         "type": "folder"
+      },
+      {
+        "value": "^/?miniprogram_npm/tdesign-miniprogram/(?!(?:common|icon|mixins|miniprogram_npm|overlay|popup|swipe-cell)/)[^/]+/",
+        "type": "regexp"
       }
     ],
     "include": [
@@ -27,6 +31,7 @@
     "es6": true,
     "postcss": true,
     "minified": true,
+    "ignoreUploadUnusedFiles": true,
     "urlCheck": true,
     "packNpmManually": false,
     "compileWorklet": false,

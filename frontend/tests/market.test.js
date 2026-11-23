@@ -128,12 +128,17 @@ test('upload parses multipart response and normalizes image paths separately fro
   assert.equal(api.mediaUrl('//example.test/legacy.png'), '');
 });
 
-test('trial and release do not silently use the local API', async () => {
-  global.wx = {
-    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'trial' } }),
-    request: () => assert.fail('missing trial origin must prevent sending a request'),
-  };
-  await assert.rejects(api.getCategories(), /请配置当前版本/);
+test('trial and release use the deployed HTTPS API', async () => {
+  for (const envVersion of ['trial', 'release']) {
+    global.wx = {
+      getAccountInfoSync: () => ({ miniProgram: { envVersion } }),
+      request: (options) => {
+        assert.equal(options.url, 'https://cookbook.caowj.top/api/categories');
+        options.success({ statusCode: 200, data: { code: 0, data: [] } });
+      },
+    };
+    assert.deepEqual(await api.getCategories(), []);
+  }
 });
 
 test('home reviews the cart before submitting and reuses the last request after a timeout', async () => {

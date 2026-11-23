@@ -43,13 +43,22 @@ for (const [entry, rule] of Object.entries(app.preloadRule ?? {})) {
 
 const designRoot = path.join(projectRoot, 'node_modules', 'tdesign-miniprogram');
 const buildRoot = 'miniprogram_npm/tdesign-miniprogram';
+const packageExclusions = (project.packOptions?.ignore ?? [])
+  .filter(({ type }) => type === 'regexp')
+  .map(({ value }) => new RegExp(value, 'i'));
 const installed = fs.existsSync(designRoot);
 const components = new Set(Object.keys(app.usingComponents));
 const checkedComponents = new Set();
+function checkComponentPackRule(component) {
+  assert.ok(!packageExclusions.some((rule) => rule.test(component + '.js')),
+    'TDesign component is excluded by packOptions.ignore: ' + component);
+}
+
 function checkBuiltComponent(component) {
   if (checkedComponents.has(component)) return;
   checkedComponents.add(component);
   assert.ok(component.startsWith(buildRoot + '/'), 'Unexpected TDesign component path: ' + component);
+  checkComponentPackRule(component);
   for (const extension of ['.js', '.json', '.wxml', '.wxss']) {
     const file = component + extension;
     assert.ok(isFile(file), 'Missing npm build file: ' + file + '. Run 工具 → 构建 npm in WeChat DevTools.');
@@ -64,6 +73,7 @@ function checkComponents(dependencies = {}) {
   for (const componentPath of Object.values(dependencies)) {
     assert.ok(componentPath.startsWith('tdesign-miniprogram/'), componentPath);
     const relative = componentPath.slice('tdesign-miniprogram/'.length);
+    checkComponentPackRule(buildRoot + '/' + relative);
     if (installed) {
       const file = path.join(designRoot, 'miniprogram_dist', relative + '.json');
       assert.ok(fs.existsSync(file), file);
