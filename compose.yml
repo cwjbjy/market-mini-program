@@ -1,33 +1,23 @@
 services:
-  mongo:
-    image: mongo:8.0
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+  mysql:
+    image: mysql:8.0
+    command: ["mysqld", "--mysqlx=OFF"]
+    environment:
+      MYSQL_DATABASE: market_app
+      MYSQL_USER: ${MARKET_MYSQL_USER:-market}
+      MYSQL_PASSWORD: ${MARKET_MYSQL_PASSWORD:-market-local}
+      MYSQL_ROOT_PASSWORD: ${MARKET_MYSQL_ROOT_PASSWORD:-market-root-local}
     ports:
-      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:${MARKET_MYSQL_PORT:-3306}:3306"
     volumes:
-      - mongo_data:/data/db
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test:
-        - CMD
-        - mongosh
-        - --norc
-        - --quiet
-        - mongodb://localhost:27017/admin?directConnection=true&serverSelectionTimeoutMS=2000
-        - --eval
-        - |
-          try {
-            rs.status();
-          } catch (error) {
-            if (error.code !== 94) throw error;
-            const result = rs.initiate({_id: "rs0", members: [{_id: 0, host: "localhost:27017"}]});
-            if (!result.ok) throw new Error(JSON.stringify(result));
-          }
-          quit(db.hello().isWritablePrimary ? 0 : 1);
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -u \"$$MYSQL_USER\" \"$$MYSQL_DATABASE\" -e 'SELECT 1' >/dev/null"]
       interval: 10s
       timeout: 5s
-      start_period: 30s
+      start_period: 45s
       start_interval: 3s
       retries: 6
 
 volumes:
-  mongo_data:
+  mysql_data:

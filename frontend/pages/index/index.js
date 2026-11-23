@@ -6,6 +6,8 @@ const { confirm, toast, showError, errorMessage } = require('../../lib/ui');
 Page({
   data: {
     query: '',
+    recipeCount: 0,
+    heroTop: 72,
     visibleCategories: [],
     activeIndex: 0,
     categoryAnchor: '',
@@ -18,16 +20,17 @@ Page({
     totalQuantity: 0,
     cartPending: false,
     submitting: false,
-    swipeActions: [{ text: '删除', style: 'background:#A13F2D;color:#fff' }],
   },
 
   onLoad() {
     this.categories = [];
     this.sections = [];
     this.searchKeyword = '';
+    this.updateHeroTop();
   },
 
   onShow() {
+    this.getTabBar?.()?.setData({ selected: 'home' });
     this.renderCatalog();
     this.refreshCatalog();
   },
@@ -37,7 +40,14 @@ Page({
   },
 
   onResize() {
+    this.updateHeroTop();
     this.measureSections();
+  },
+
+  updateHeroTop() {
+    const capsule = wx.getMenuButtonBoundingClientRect?.();
+    const statusBarHeight = wx.getWindowInfo?.()?.statusBarHeight || 0;
+    this.setData({ heroTop: capsule?.bottom > 0 ? capsule.bottom + 4 : statusBarHeight + 48 });
   },
 
   async refreshCatalog() {
@@ -95,6 +105,7 @@ Page({
     const resetPosition = resetIndex || previousIndex < 0;
     this.setData({
       ...(resetPosition ? { recipeAnchor: '' } : {}),
+      recipeCount: recipeIndex.size,
       visibleCategories,
       activeIndex,
       categoryAnchor: 'category-' + activeIndex,
@@ -170,22 +181,22 @@ Page({
   createRecipe() {
     const category = this.data.visibleCategories[this.data.activeIndex];
     const query = category ? '?categoryId=' + encodeURIComponent(category.id) : '';
-    wx.navigateTo({ url: '/vegetable/index/create' + query });
+    wx.navigateTo({ url: '/packages/catalog/recipe/editor' + query });
   },
 
   manageCategories() {
-    wx.navigateTo({ url: '/vegetable/category/manage' });
+    wx.navigateTo({ url: '/packages/catalog/category/manage' });
   },
 
   openRecipe(event) {
-    wx.navigateTo({ url: '/vegetable/index/detail?recipeId=' + encodeURIComponent(event.currentTarget.dataset.id) });
+    wx.navigateTo({ url: '/packages/catalog/recipe/detail?recipeId=' + encodeURIComponent(event.currentTarget.dataset.id) });
   },
 
-  ignoreTap() {},
-
-  changeQuantity(event) {
+  adjustQuantity(event) {
+    if (this.data.submitting || this.data.cartPending) return;
+    const { id, delta } = event.currentTarget.dataset;
     try {
-      cart.replaceQuantity(event.currentTarget.dataset.id, Number(event.detail.value));
+      cart.adjustQuantity(id, Number(delta));
       this.renderCatalog();
     } catch (error) {
       showError(error, '无法保存购物车');
@@ -231,17 +242,22 @@ Page({
     if (!event.detail.visible) this.closeCart();
   },
 
-  clearCart() {
+  async clearCart() {
+    if (this.confirmingClear || this.data.submitting || this.data.cartPending || !this.data.cartOpen) return;
+    this.confirmingClear = true;
     try {
+      if (!await confirm('清空购物车', '确定移除所有已选菜品吗？', '清空')) return;
       cart.clear();
       this.renderCatalog();
     } catch (error) {
       showError(error, '无法清空购物车');
+    } finally {
+      this.confirmingClear = false;
     }
   },
 
   async submitOrder() {
-    if (this.data.submitting) return;
+    if (!this.data.cartOpen || this.data.submitting || this.confirmingClear) return;
     if (!this.data.cartPending && this.data.cartItems.some((item) => item.unavailable)) {
       toast('请先移除不可用的菜谱');
       this.openCart();

@@ -1,9 +1,9 @@
 package cn.marketkitchen.controller;
 
-import cn.marketkitchen.common.ApiResponse;
+import cn.marketkitchen.domain.Order;
 import cn.marketkitchen.dto.OrderDtos.SubmitOrder;
-import cn.marketkitchen.entity.Order;
 import cn.marketkitchen.service.OrderService;
+import cn.marketkitchen.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;

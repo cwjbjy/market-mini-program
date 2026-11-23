@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.marketkitchen.mapper.OrderMapper">
+    <resultMap id="orderItem" type="cn.marketkitchen.mapper.model.OrderItemRow">
+        <constructor>
+            <idArg column="line_number" javaType="_int"/>
+            <arg column="recipe_id" javaType="string"/>
+            <arg column="name" javaType="string"/>
+            <arg column="image" javaType="string"/>
+            <arg column="ingredients" javaType="string"/>
+            <arg column="steps" javaType="string"/>
+            <arg column="quantity" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="orderWithItems" type="cn.marketkitchen.mapper.model.OrderRow">
+        <id property="id" column="id"/>
+        <result property="displayDate" column="display_date"/>
+        <result property="createdAt" column="created_at"/>
+        <collection property="items" resultMap="orderItem" columnPrefix="item_" notNullColumn="line_number"/>
+    </resultMap>
+
+    <sql id="orderColumns">
+        o.id, o.display_date, o.created_at, i.line_number AS item_line_number, i.recipe_id AS item_recipe_id,
+        i.name AS item_name, i.image AS item_image, i.ingredients AS item_ingredients, i.steps AS item_steps,
+        i.quantity AS item_quantity
+    </sql>
+
+    <select id="recentWithItems" resultMap="orderWithItems" resultOrdered="true">
+        SELECT <include refid="orderColumns"/>
+        FROM (
+            SELECT id, display_date, created_at FROM orders WHERE deleted_at IS NULL
+            ORDER BY created_at DESC, id DESC LIMIT 50
+        ) o
+        LEFT JOIN order_items i ON i.order_id = o.id
+        ORDER BY o.created_at DESC, o.id DESC, i.line_number
+    </select>
+
+    <select id="findWithItems" resultMap="orderWithItems">
+        SELECT <include refid="orderColumns"/>
+        FROM orders o LEFT JOIN order_items i ON i.order_id = o.id
+        WHERE o.id = #{id}
+        ORDER BY i.line_number
+    </select>
+
+    <insert id="insertItems">
+        INSERT INTO order_items (order_id, line_number, recipe_id, name, image, ingredients, steps, quantity)
+        VALUES
+        <foreach collection="items" item="item" index="lineNumber" separator=",">
+            (#{orderId}, #{lineNumber}, #{item.recipeId}, #{item.name}, #{item.image}, #{item.ingredients},
+             #{item.steps}, #{item.quantity})
+        </foreach>
+    </insert>
+</mapper>

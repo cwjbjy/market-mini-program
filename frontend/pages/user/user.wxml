@@ -1,18 +1,19 @@
-<view class="account">
+<view class="screen account">
   <view class="account-header">
     <image class="account-avatar" src="/static/user/avatar.png" mode="aspectFill" />
-    <text class="account-title">爱情厨房</text>
+    <text class="account-title">家庭厨房</text>
   </view>
+
   <view class="account-links panel">
     <button class="account-link" bindtap="goToOrders">
-      <view class="account-link__icon"><t-icon name="file" size="38rpx" /></view>
+      <view class="account-link__icon"><t-icon name="file" size="36rpx" aria-hidden="true" /></view>
       <text class="account-link__title">订单记录</text>
-      <t-icon name="chevron-right" size="34rpx" />
+      <t-icon name="chevron-right" size="31rpx" aria-hidden="true" />
     </button>
     <button class="account-link" bindtap="goToCategories">
-      <view class="account-link__icon"><t-icon name="view-list" size="38rpx" /></view>
+      <view class="account-link__icon"><t-icon name="view-list" size="36rpx" aria-hidden="true" /></view>
       <text class="account-link__title">分类管理</text>
-      <t-icon name="chevron-right" size="34rpx" />
+      <t-icon name="chevron-right" size="31rpx" aria-hidden="true" />
     </button>
   </view>
 </view>

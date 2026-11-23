@@ -1,0 +1,151 @@
+name: Backend CI and release
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+    tags: ['[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.ref_type == 'tag' && 'market-kitchen-production' || format('market-kitchen-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  ACR_IMAGE: registry.cn-hangzhou.aliyuncs.com/node_caowj/market-kitchen
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: market-ci-test
+          MYSQL_ROOT_HOST: '%'
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd "mysqladmin ping --protocol=TCP --host=127.0.0.1 --silent"
+          --health-interval 5s
+          --health-timeout 4s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Run backend and MySQL tests
+        working-directory: backend
+        env:
+          MARKET_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/?sslMode=DISABLED&allowPublicKeyRetrieval=true
+          MARKET_TEST_MYSQL_USER: root
+          MARKET_TEST_MYSQL_PASSWORD: market-ci-test
+        run: mvn -B -ntp verify
+
+  build-and-push:
+    if: github.ref_type == 'tag'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: '[[ "$RELEASE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Push backend and MySQL image to ACR
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.ACR_IMAGE }}:${{ github.ref_name }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=market-kitchen
+          cache-to: type=gha,mode=max,scope=market-kitchen
+
+  deploy:
+    if: github.ref_type == 'tag'
+    needs: build-and-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy the published image
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+          IMAGE_DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          : "${DEPLOY_HOST:?Set DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Set DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Set DEPLOY_SSH_KEY}"
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+
+          key_dir=$(mktemp -d)
+          trap 'rm -f -- "$key_dir/key"; rmdir -- "$key_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$key_dir/key"
+          chmod 600 "$key_dir/key"
+          ssh_options=(-i "$key_dir/key" -o BatchMode=yes -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=accept-new
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+          remote() {
+            ssh "${ssh_options[@]}" -p "$DEPLOY_SSH_PORT" -l "$DEPLOY_USER" -- "$DEPLOY_HOST" "$@"
+          }
+
+          stage=$(remote 'mktemp -d /opt/market-kitchen/.incoming.XXXXXXXX')
+          [[ "$stage" =~ ^/opt/market-kitchen/\.incoming\.[A-Za-z0-9]+$ ]]
+          cleanup() {
+            remote "rm -f -- '$stage/compose.prod.yml' '$stage/image'; rmdir -- '$stage'" || true
+            rm -f -- "$key_dir/key"
+            rmdir -- "$key_dir"
+          }
+          trap cleanup EXIT
+
+          scp "${ssh_options[@]}" -P "$DEPLOY_SSH_PORT" \
+            compose.prod.yml "$DEPLOY_USER@$DEPLOY_HOST:$stage/"
+
+          remote "cd /opt/market-kitchen && bash -se -- '$stage' '$ACR_IMAGE@$IMAGE_DIGEST'" <<'REMOTE'
+          stage=$1
+          export MARKET_IMAGE=$2
+          printf '%s\n' "$MARKET_IMAGE" > "$stage/image"
+          compose=(docker compose --project-directory "$PWD" --env-file .env -f "$stage/compose.prod.yml")
+          "${compose[@]}" pull
+          if ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never; then
+            "${compose[@]}" ps -a || true
+            if [[ -f compose.prod.yml && -s .market-image ]]; then
+              echo 'Restoring the previous release.' >&2
+              MARKET_IMAGE=$(<.market-image) docker compose --env-file .env -f compose.prod.yml \
+                up -d --wait --wait-timeout 200 --pull missing
+            fi
+            exit 1
+          fi
+          mv -f -- "$stage/compose.prod.yml" compose.prod.yml
+          mv -f -- "$stage/image" .market-image
+          docker compose --env-file .env -f compose.prod.yml ps
+          REMOTE

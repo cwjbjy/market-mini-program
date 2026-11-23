@@ -1,36 +1,37 @@
 package cn.marketkitchen.service;
 
-import cn.marketkitchen.config.MongoTransactions;
+import cn.marketkitchen.domain.Order;
+import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.dto.OrderDtos.SubmitOrder;
-import cn.marketkitchen.entity.Order;
 import cn.marketkitchen.exception.BusinessException;
-import cn.marketkitchen.mapper.CatalogMapper;
-import cn.marketkitchen.mapper.OrderMapper;
-import cn.marketkitchen.mapper.OrderMapper.StoredOrder;
-import com.mongodb.MongoException;
+import cn.marketkitchen.repository.CategoryRepository;
+import cn.marketkitchen.repository.OrderRepository;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class OrderService {
-    private final CatalogMapper catalog;
-    private final OrderMapper orders;
-    private final MongoTransactions transactions;
+    private final CategoryRepository categoryRepository;
+    private final OrderRepository orderRepository;
+    private final TransactionTemplate transactions;
 
-    public OrderService(CatalogMapper catalog, OrderMapper orders, MongoTransactions transactions) {
-        this.catalog = catalog;
-        this.orders = orders;
+    public OrderService(CategoryRepository categoryRepository, OrderRepository orderRepository,
+            TransactionTemplate transactions) {
+        this.categoryRepository = categoryRepository;
+        this.orderRepository = orderRepository;
         this.transactions = transactions;
     }
 
     public List<Order> recentOrders() {
-        return orders.recentOrders();
+        return orderRepository.recentOrders();
     }
 
     public Order submit(SubmitOrder input) {
@@ -40,56 +41,52 @@ public class OrderService {
                 throw BusinessException.badRequest("同一菜谱只能添加一次");
             }
         }
-        try {
-            return transactions.run(session -> {
-                StoredOrder previous = orders.findByRequestId(session, input.requestId());
-                if (previous != null) {
-                    return replay(previous, quantities);
-                }
 
-                var items = new ArrayList<Order.Item>();
-                var resolvedIds = new HashSet<String>();
-                for (var selection : quantities.entrySet()) {
-                    var stored = catalog.findStoredRecipe(session, selection.getKey());
-                    if (stored == null) {
-                        throw BusinessException.conflict("有菜谱已删除，请刷新菜单后重新下单");
-                    }
-                    var recipe = stored.recipe();
-                    if (!resolvedIds.add(recipe.id())) {
-                        throw BusinessException.badRequest("同一菜谱只能添加一次");
-                    }
-                    items.add(new Order.Item(recipe.id(), recipe.name(), recipe.image(), recipe.ingredients(),
-                            recipe.steps(), selection.getValue()));
-                    catalog.incrementOrderCount(session, stored);
-                }
+        String id = "order:" + input.requestId();
+        try {
+            return transactions.execute(status -> {
                 Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-                String date = OrderMapper.DISPLAY_TIME.format(now.atZone(OrderMapper.DISPLAY_ZONE));
-                Order order = new Order(OrderMapper.idForRequest(input.requestId()), date, now, List.copyOf(items));
-                orders.insert(session, order, quantities);
+                String date = Order.formatDisplayDate(now);
+                // Reserve the idempotency key before locking recipes or updating any counters.
+                orderRepository.insert(id, date, now);
+                Map<String, Recipe> recipes = categoryRepository.lockRecipes(quantities.keySet()).stream()
+                        .collect(Collectors.toMap(Recipe::id, recipe -> recipe));
+                if (recipes.size() != quantities.size()) {
+                    throw BusinessException.conflict("有菜谱已删除，请刷新菜单后重新下单");
+                }
+                var items = quantities.entrySet().stream().map(selection -> {
+                    Recipe recipe = recipes.get(selection.getKey());
+                    return new Order.Item(recipe.id(), recipe.name(), recipe.image(), recipe.ingredients(),
+                            recipe.steps(), selection.getValue());
+                }).toList();
+                var order = new Order(id, date, now, items);
+                orderRepository.insertItems(order);
+                categoryRepository.incrementOrderCounts(quantities.keySet());
                 return order;
             });
-        } catch (MongoException error) {
-            if (error.getCode() == 11000) {
-                // Concurrent submissions can collide on the order ID before either reads the other.
-                StoredOrder previous = orders.findByRequestId(null, input.requestId());
-                if (previous != null) {
-                    return replay(previous, quantities);
-                }
+        } catch (DuplicateKeyException error) {
+            Order previous = orderRepository.find(id);
+            if (previous == null) {
+                throw error;
             }
-            throw error;
+            return replay(previous, quantities);
         }
     }
 
     public void delete(String id) {
-        if (!orders.hideOrder(id, Instant.now())) {
+        if (!orderRepository.hideOrder(id, Instant.now())) {
             throw BusinessException.notFound("订单不存在");
         }
     }
 
-    private static Order replay(StoredOrder previous, Map<String, Integer> requested) {
-        if (!previous.requestedItems().equals(requested)) {
+    private static Order replay(Order previous, Map<String, Integer> requested) {
+        var previousItems = new HashMap<String, Integer>();
+        for (var item : previous.items()) {
+            previousItems.put(item.recipeId(), item.quantity());
+        }
+        if (!previousItems.equals(requested)) {
             throw BusinessException.conflict("相同的下单标识已用于其他菜品或数量");
         }
-        return previous.order();
+        return previous;
     }
 }

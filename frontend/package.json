@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "test": "node tests/market.test.js",
-    "check": "node tools/check-project.js"
+    "check": "node tools/check-project.js",
+    "check:build": "node tools/check-project.js --built"
   },
   "dependencies": {
     "tdesign-miniprogram": "1.18.0"

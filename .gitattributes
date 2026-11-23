@@ -1,1 +1,2 @@
 /docker/market-entrypoint.sh text eol=lf
+/docker/init-env.sh text eol=lf

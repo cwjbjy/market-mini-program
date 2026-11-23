@@ -1,3 +1,5 @@
+const DELETE_COLOR = '#983F35';
+
 function errorMessage(error, fallback) {
   return error && error.message ? error.message : fallback;
 }
@@ -10,17 +12,17 @@ function showError(error, fallback) {
   toast(errorMessage(error, fallback));
 }
 
-function confirm(title, content) {
+function confirm(title, content, confirmText = '删除') {
   return new Promise((resolve) => {
     wx.showModal({
       title,
       content,
-      confirmText: '删除',
-      confirmColor: '#A13F2D',
+      confirmText,
+      confirmColor: DELETE_COLOR,
       success: (result) => resolve(result.confirm),
       fail: () => resolve(false),
     });
   });
 }
 
-module.exports = { errorMessage, toast, showError, confirm };
+module.exports = { errorMessage, toast, showError, confirm, DELETE_COLOR };

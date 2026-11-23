@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.marketkitchen.mapper.RecipeMapper">
+    <resultMap id="recipe" type="cn.marketkitchen.mapper.model.RecipeRow">
+        <id property="id" column="id"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="name" column="name"/>
+        <result property="image" column="image"/>
+        <result property="ingredients" column="ingredients"/>
+        <result property="steps" column="steps"/>
+        <result property="orderCount" column="order_count"/>
+        <result property="sortOrder" column="sort_order"/>
+    </resultMap>
+
+    <sql id="recipeSelect">
+        SELECT id, category_id, name, image, ingredients, steps, order_count, sort_order FROM recipes
+    </sql>
+
+    <sql id="recipeIds">
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </sql>
+
+    <select id="lockRecipe" resultMap="recipe" flushCache="true">
+        <include refid="recipeSelect"/>
+        WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="lockRecipes" resultMap="recipe" flushCache="true">
+        <include refid="recipeSelect"/>
+        WHERE id IN <include refid="recipeIds"/>
+        ORDER BY id FOR UPDATE
+    </select>
+
+    <update id="incrementOrderCounts">
+        UPDATE recipes SET order_count = order_count + 1
+        WHERE id IN <include refid="recipeIds"/>
+    </update>
+</mapper>

@@ -1,14 +1,26 @@
 {
-  "description": "爱情厨房原生微信小程序",
+  "description": "家庭厨房原生微信小程序",
   "projectname": "market-mini-program",
-  "appid": "touristappid",
+  "appid": "wx5f2e1ba8b0fc7c67",
   "compileType": "miniprogram",
   "miniprogramRoot": "./",
   "libVersion": "3.8.10",
   "packOptions": {
     "ignore": [
-      { "type": "folder", "value": "tests" },
-      { "type": "folder", "value": "tools" }
+      {
+        "value": "tests",
+        "type": "folder"
+      },
+      {
+        "value": "tools",
+        "type": "folder"
+      }
+    ],
+    "include": [
+      {
+        "type": "folder",
+        "value": "static/tab"
+      }
     ]
   },
   "setting": {
@@ -16,7 +28,27 @@
     "postcss": true,
     "minified": true,
     "urlCheck": true,
-    "packNpmManually": false
+    "packNpmManually": false,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "enhance": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
   },
-  "condition": {}
+  "condition": {},
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {}
 }

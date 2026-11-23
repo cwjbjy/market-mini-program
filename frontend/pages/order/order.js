@@ -6,6 +6,7 @@ Page({
   data: { orders: [], loading: true, loadError: '', deletingId: '' },
 
   onShow() {
+    this.getTabBar?.()?.setData({ selected: 'order' });
     this.loadOrders();
   },
 

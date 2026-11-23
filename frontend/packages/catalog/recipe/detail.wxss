@@ -1,0 +1,40 @@
+.recipe-detail {
+  padding-bottom: 128rpx;
+  padding-bottom: calc(128rpx + env(safe-area-inset-bottom));
+  padding-bottom: max(128rpx, 62px);
+  padding-bottom: calc(max(128rpx, 62px) + env(safe-area-inset-bottom));
+}
+.recipe-hero { height: 418rpx; }
+.recipe-hero::after { position: absolute; top: 55%; right: 0; bottom: 0; left: 0; background: linear-gradient(0deg, var(--photo-shade), transparent); pointer-events: none; content: ''; }
+.recipe-content { position: relative; display: flex; flex-direction: column; gap: 18rpx; margin: -40rpx var(--gutter) 0; }
+.recipe-head { display: flex; flex-direction: column; align-items: center; padding: 28rpx 27rpx; text-align: center; }
+.recipe-title { color: var(--ink); font-size: 40rpx; line-height: 1.28; font-weight: 700; overflow-wrap: anywhere; }
+.recipe-title::after { display: block; width: 60rpx; height: 4rpx; margin: 13rpx auto 0; border-radius: 2rpx; background: var(--brand); content: ''; }
+.recipe-count { margin-top: 10rpx; color: var(--muted); font-size: 24rpx; }
+.recipe-section { padding: var(--gutter); }
+.recipe-section__heading { display: flex; align-items: center; margin-bottom: 17rpx; color: var(--ink); font-size: 30rpx; font-weight: 700; }
+.recipe-section__icon { display: flex; align-items: center; justify-content: center; flex: none; width: 50rpx; height: 50rpx; margin-right: 13rpx; border-radius: 13rpx; background: var(--brand-light); color: var(--brand); }
+.recipe-section__icon--ingredients { background: var(--accent-light); color: var(--accent); }
+.recipe-ingredients { display: flex; flex-wrap: wrap; }
+.recipe-tag { max-width: 100%; margin: 0 10rpx 8rpx 0; padding: 8rpx 17rpx; border: 1rpx solid var(--line); border-radius: 24rpx; background: var(--soft); color: var(--muted); font-size: 25rpx; overflow-wrap: anywhere; }
+.recipe-text { display: block; color: var(--muted); font-size: 28rpx; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.recipe-footer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  padding: 16rpx 27rpx;
+  padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid var(--line);
+  background: var(--paper);
+}
+.recipe-footer button {
+  display: flex;
+  min-height: 84rpx;
+  min-height: max(84rpx, 44px);
+  padding: 0 16rpx;
+}
+button.recipe-edit { flex: 0 0 200rpx; width: 200rpx; margin-right: 14rpx; font-size: 26rpx; }
+button.recipe-add { flex: 1 1 0; min-width: 0; width: 0; }

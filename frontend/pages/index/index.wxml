@@ -1,26 +1,42 @@
+<template name="quantity-control">
+  <view class="quantity {{quantity ? 'quantity--selected' : ''}}">
+    <block wx:if="{{quantity}}">
+      <button class="quantity__button quantity__button--minus" disabled="{{locked}}"
+        data-id="{{id}}" data-delta="-1" catchtap="adjustQuantity" aria-label="减少{{name}}数量">
+        <view class="quantity__glyph"><t-icon name="remove" size="28rpx" aria-hidden="true" /></view>
+      </button>
+      <text class="quantity__value" aria-label="已选{{quantity}}份">{{quantity}}</text>
+    </block>
+    <button class="quantity__button quantity__button--plus" disabled="{{locked || quantity >= 9999}}"
+      data-id="{{id}}" data-delta="1" catchtap="adjustQuantity" aria-label="增加{{name}}数量">
+      <view class="quantity__glyph"><t-icon name="add" size="32rpx" aria-hidden="true" /></view>
+    </button>
+  </view>
+</template>
+
 <view class="home">
-  <view class="banner">
-    <image class="banner__image" src="/static/index/banner.jpg" mode="aspectFill" />
-    <view class="banner__shade"></view>
-    <text class="banner__title">今日菜单</text>
+  <view class="menu-hero" style="padding-top: {{heroTop}}px">
+    <view class="menu-hero__copy">
+      <text class="menu-hero__title">家庭厨房</text>
+      <text class="menu-hero__meta">今日菜单<text wx:if="{{recipeCount}}"> · {{recipeCount}} 道菜谱</text></text>
+    </view>
+    <image class="menu-hero__image" src="/static/index/banner.jpg" mode="aspectFit" aria-hidden="true" />
   </view>
 
   <view class="toolbar">
     <view class="search-box">
-      <t-icon name="search" size="34rpx" aria-hidden="true" />
-      <input class="search-input" value="{{query}}" placeholder="搜索菜名" aria-label="搜索菜名"
+      <t-icon name="search" size="35rpx" aria-hidden="true" />
+      <input class="search-input" value="{{query}}" placeholder="搜索菜品" aria-label="搜索菜品"
         confirm-type="search" bindinput="onSearchInput" bindconfirm="onSearchConfirm" />
       <button wx:if="{{query}}" class="icon-button search-clear" aria-label="清除搜索" bindtap="clearSearch">
-        <t-icon name="close-circle-filled" size="34rpx" />
+        <t-icon name="close-circle-filled" size="32rpx" aria-hidden="true" />
       </button>
     </view>
-    <button class="toolbar-action" bindtap="createRecipe">
-      <t-icon name="add" size="32rpx" />
-      <text>新建</text>
+    <button class="toolbar-action toolbar-action--add" bindtap="createRecipe" aria-label="新建菜谱">
+      <t-icon name="add" size="26rpx" aria-hidden="true" /><text>新建菜谱</text>
     </button>
-    <button class="toolbar-action" bindtap="manageCategories">
-      <t-icon name="view-list" size="32rpx" />
-      <text>分类</text>
+    <button class="toolbar-action toolbar-action--categories" bindtap="manageCategories" aria-label="分类管理">
+      <t-icon name="setting" size="26rpx" aria-hidden="true" /><text>分类管理</text>
     </button>
   </view>
 
@@ -30,100 +46,111 @@
   </view>
 
   <view wx:if="{{visibleCategories.length}}" class="catalog">
-    <scroll-view class="catalog-side" scroll-y scroll-into-view="{{categoryAnchor}}" show-scrollbar="{{false}}">
+    <scroll-view class="category-sidebar" scroll-y enhanced
+      scroll-into-view="{{categoryAnchor}}" show-scrollbar="{{false}}">
       <button wx:for="{{visibleCategories}}" wx:key="id" id="category-{{index}}"
         class="category-button {{index === activeIndex ? 'category-button--active' : ''}}"
         data-index="{{index}}" bindtap="selectCategory" aria-selected="{{index === activeIndex}}">
         <view class="category-button__image image-placeholder">
+          <t-icon name="image" size="23rpx" aria-hidden="true" />
           <image wx:if="{{item.imageUrl}}" src="{{item.imageUrl}}" mode="aspectFill" />
-          <t-icon wx:else name="image" size="34rpx" />
         </view>
-        <text>{{item.name}}</text>
+        <text class="category-button__label">{{item.name}}</text>
       </button>
     </scroll-view>
-
-    <scroll-view class="catalog-scroll" scroll-y scroll-with-animation scroll-into-view="{{recipeAnchor}}"
-      refresher-enabled refresher-triggered="{{refreshing}}" refresher-background="#FAF6F1"
+    <scroll-view class="catalog-scroll" scroll-y enhanced
+      scroll-with-animation scroll-into-view="{{recipeAnchor}}" show-scrollbar="{{false}}"
+      refresher-enabled refresher-triggered="{{refreshing}}" refresher-background="#F7F7EF"
       bindrefresherrefresh="refreshFromGesture" bindscroll="onCatalogScroll">
       <view wx:for="{{visibleCategories}}" wx:key="id" id="section-{{index}}" class="catalog-section">
         <view class="section-title">
+          <view class="section-title__dot"></view>
           <text class="section-title__name">{{item.name}}</text>
           <text class="section-title__count">{{item.recipes.length}} 道</text>
         </view>
         <view wx:if="{{!item.recipes.length}}" class="section-empty">这个分类还没有菜谱</view>
         <t-swipe-cell wx:for="{{item.recipes}}" wx:for-item="recipe" wx:key="id"
-          class="swipe-wrapper" right="{{swipeActions}}" data-id="{{recipe.id}}" data-name="{{recipe.name}}" bind:click="removeRecipe">
+          class="swipe-wrapper">
           <view class="recipe-card">
-            <view class="recipe-card__info" data-id="{{recipe.id}}" bindtap="openRecipe" role="button" aria-label="查看{{recipe.name}}菜谱">
-              <view class="recipe-card__image image-placeholder">
-                <image wx:if="{{recipe.imageUrl}}" src="{{recipe.imageUrl}}" mode="aspectFill" lazy-load />
-                <t-icon wx:else name="image" size="42rpx" />
-              </view>
-              <view class="recipe-card__description">
-                <text class="recipe-card__title">{{recipe.name}}</text>
-                <text class="recipe-card__ingredients">{{recipe.ingredients}}</text>
-              </view>
+            <view class="recipe-card__image image-placeholder" data-id="{{recipe.id}}" bindtap="openRecipe" role="button" aria-label="查看{{recipe.name}}菜谱">
+              <t-icon name="image" size="46rpx" aria-hidden="true" />
+              <image wx:if="{{recipe.imageUrl}}" src="{{recipe.imageUrl}}" mode="aspectFill" lazy-load />
             </view>
-            <view class="recipe-card__controls" catchtap="ignoreTap">
-              <t-stepper value="{{recipe.quantity}}" min="{{0}}" max="{{9999}}" size="medium"
-                theme="outline" disable-input disabled="{{cartPending}}" data-id="{{recipe.id}}" bind:change="changeQuantity" />
+            <view class="recipe-card__body">
+              <view class="recipe-card__description" data-id="{{recipe.id}}" bindtap="openRecipe" role="button" aria-label="查看{{recipe.name}}菜谱">
+                <text class="recipe-card__title">{{recipe.name}}</text>
+                <text wx:if="{{recipe.ingredients}}" class="recipe-card__ingredients">配料：{{recipe.ingredients}}</text>
+              </view>
+              <view class="recipe-card__controls">
+                <text wx:if="{{recipe.orderCount}}" class="recipe-card__count">点单 {{recipe.orderCount}} 次</text>
+                <template is="quantity-control" data="{{id: recipe.id, name: recipe.name, quantity: recipe.quantity, locked: cartPending || submitting}}" />
+              </view>
             </view>
           </view>
+          <button slot="right" class="recipe-delete" data-id="{{recipe.id}}" data-name="{{recipe.name}}"
+            bindtap="removeRecipe" aria-label="删除{{recipe.name}}">删除</button>
         </t-swipe-cell>
       </view>
     </scroll-view>
   </view>
 
-  <scroll-view wx:else class="catalog-empty-scroll" scroll-y refresher-enabled
-    refresher-triggered="{{refreshing}}" refresher-background="#FAF6F1" bindrefresherrefresh="refreshFromGesture">
-    <view class="state catalog-state">
-      <t-icon name="{{loading ? 'loading' : query ? 'search' : 'file'}}" size="54rpx" aria-hidden="true" />
-      <text class="state__title">{{loading ? '正在加载菜单' : loadError ? '菜单加载失败' : query ? '没有找到菜谱' : '菜单还是空的'}}</text>
-      <text wx:if="{{loadError || query}}" class="state__description">{{loadError || '换个菜名试试'}}</text>
-      <button wx:if="{{loadError}}" class="secondary" bindtap="refreshCatalog">重试</button>
-      <button wx:elif="{{!loading && !query}}" class="secondary" bindtap="manageCategories">创建分类</button>
-    </view>
-  </scroll-view>
+  <view wx:else class="catalog">
+    <scroll-view class="catalog-scroll catalog-scroll--empty" scroll-y refresher-enabled
+      refresher-triggered="{{refreshing}}" refresher-background="#F7F7EF" bindrefresherrefresh="refreshFromGesture">
+      <view class="panel state catalog-state">
+        <view class="state__symbol">
+          <t-icon name="{{loading ? 'loading' : query ? 'search' : 'file'}}" size="48rpx" aria-hidden="true" />
+        </view>
+        <text class="state__title">{{loading ? '正在加载菜单' : loadError ? '菜单加载失败' : query ? '没有找到菜谱' : '菜单还是空的'}}</text>
+        <text wx:if="{{loadError || query}}" class="state__description">{{loadError || '换个菜名试试'}}</text>
+        <button wx:if="{{loadError}}" class="secondary" bindtap="refreshCatalog">重试</button>
+        <button wx:elif="{{!loading && !query}}" class="secondary" bindtap="manageCategories">创建分类</button>
+      </view>
+    </scroll-view>
+  </view>
 
   <view class="order-bar" wx:if="{{totalQuantity}}">
-    <button class="basket-link" bindtap="openCart">
-      <view class="basket-icon"><t-icon name="cart" size="44rpx" /></view>
-      <view>
-        <text class="basket-label">已选 {{totalQuantity}} 份</text>
-        <text class="basket-note">{{cartPending ? '待确认上一次提交' : '查看购物车'}}</text>
+    <button class="basket-link" bindtap="openCart" aria-label="{{cartPending ? '核对上次订单' : '查看购物车，已选 ' + totalQuantity + ' 份'}}">
+      <view class="basket-summary">
+        <view class="basket-icon"><t-icon name="cart" size="39rpx" aria-hidden="true" /></view>
+        <view class="basket-link__copy">
+          <text class="basket-label">{{cartPending ? '上次订单待确认' : '已选 ' + totalQuantity + ' 份'}}</text>
+          <text class="basket-note">{{cartItems.length}} 道菜</text>
+        </view>
       </view>
-    </button>
-    <button class="primary checkout-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">
-      {{cartPending ? '重试提交' : '提交订单'}}
+      <view class="checkout-label"><text>{{cartPending ? '核对订单' : '去点单'}}</text></view>
     </button>
   </view>
 
-  <t-popup visible="{{cartOpen}}" placement="bottom" close-on-overlay-click="{{!submitting}}"
+  <t-popup visible="{{cartOpen}}" placement="bottom" using-custom-navbar close-on-overlay-click="{{!submitting}}"
     bind:visible-change="onCartVisibility">
-    <view class="basket">
+    <view class="sheet basket">
       <view class="basket-header">
-        <text class="basket-title">选中的菜谱</text>
-        <button wx:if="{{!cartPending}}" class="quiet basket-header__action" bindtap="clearCart">清空</button>
+        <view class="basket-heading">
+          <text class="basket-title">已选菜品</text>
+          <text class="basket-count">{{cartItems.length}} 道菜 · {{totalQuantity}} 份</text>
+        </view>
+        <button wx:if="{{!cartPending}}" class="quiet basket-header__action" aria-label="清空已选菜品"
+          bindtap="clearCart" disabled="{{submitting}}">清空</button>
         <button class="icon-button" aria-label="关闭购物车" disabled="{{submitting}}" bindtap="closeCart">
-          <t-icon name="close" size="38rpx" />
+          <t-icon name="close" size="37rpx" aria-hidden="true" />
         </button>
       </view>
       <text wx:if="{{cartPending}}" class="basket-pending">等待上一次下单结果，可重新提交。</text>
-      <scroll-view class="basket-list" style="height: {{cartItems.length * 90}}rpx" scroll-y>
+      <scroll-view class="basket-list" style="height: {{cartItems.length * 100}}rpx" scroll-y>
         <view wx:for="{{cartItems}}" wx:key="id" class="basket-row">
           <view class="basket-row__image image-placeholder">
+            <t-icon name="image" size="30rpx" aria-hidden="true" />
             <image wx:if="{{item.imageUrl}}" src="{{item.imageUrl}}" mode="aspectFill" />
-            <t-icon wx:else name="image" size="36rpx" />
           </view>
           <text class="basket-row__name">{{item.name}}</text>
           <button wx:if="{{item.unavailable && !cartPending}}" class="quiet basket-row__remove"
-            data-id="{{item.id}}" bindtap="discardUnavailable">移除</button>
-          <t-stepper wx:else value="{{item.quantity}}" min="{{0}}" max="{{9999}}" size="medium"
-            theme="outline" disable-input disabled="{{cartPending}}" data-id="{{item.id}}" bind:change="changeQuantity" />
+            data-id="{{item.id}}" bindtap="discardUnavailable" disabled="{{submitting}}">移除</button>
+          <template wx:else is="quantity-control" data="{{id: item.id, name: item.name, quantity: item.quantity, locked: cartPending || submitting}}" />
         </view>
       </scroll-view>
       <button class="primary basket-submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">
-        {{cartPending ? '重试提交' : '提交订单'}}
+        {{cartPending ? '重试提交' : '确认下单'}}
       </button>
     </view>
   </t-popup>

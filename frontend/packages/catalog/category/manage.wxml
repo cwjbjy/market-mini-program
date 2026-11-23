@@ -1,0 +1,74 @@
+<view class="screen category-page">
+  <view wx:if="{{loadError && categories.length}}" class="category-warning panel">
+    <text>{{loadError}}</text>
+    <button class="quiet" bindtap="loadCategories">重试</button>
+  </view>
+  <view wx:if="{{categories.length}}" class="category-list">
+    <view wx:for="{{categories}}" wx:key="id" class="category-row panel">
+      <view class="category-row__image image-placeholder">
+        <t-icon name="image" size="38rpx" aria-hidden="true" />
+        <image wx:if="{{item.imageUrl}}" src="{{item.imageUrl}}" mode="aspectFill" />
+      </view>
+      <view class="category-row__body">
+        <text class="category-row__name">{{item.name}}</text>
+        <text class="category-row__count">{{item.recipeCount}} 道菜谱</text>
+      </view>
+      <view class="category-row__actions">
+        <button class="quiet category-row__action" bindtap="startEdit" data-id="{{item.id}}" aria-label="编辑{{item.name}}" disabled="{{!!deletingId}}">
+          <view class="action-content"><t-icon name="edit" size="27rpx" aria-hidden="true" /><text>编辑</text></view>
+        </button>
+        <button class="quiet category-row__action category-row__action--delete" bindtap="removeCategory" data-id="{{item.id}}"
+          data-name="{{item.name}}" aria-label="删除{{item.name}}" disabled="{{!!deletingId}}">
+          <view class="action-content"><t-icon name="delete" size="27rpx" aria-hidden="true" /><text>删除</text></view>
+        </button>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="panel state">
+    <view class="state__symbol">
+      <t-icon name="{{loading ? 'loading' : 'view-list'}}" size="48rpx" aria-hidden="true" />
+    </view>
+    <text class="state__title">{{loading ? '正在加载分类' : loadError ? '分类加载失败' : '暂无分类'}}</text>
+    <text wx:if="{{loadError}}" class="state__description">{{loadError}}</text>
+    <button wx:if="{{loadError}}" class="secondary" bindtap="loadCategories">重试</button>
+  </view>
+
+  <view class="category-footer">
+    <text wx:if="{{!loading && !loadError}}" class="category-footer__count">共 {{categories.length}} 个分类</text>
+    <button class="primary category-create" bindtap="startCreate">
+      <view class="action-content"><t-icon name="add" size="30rpx" aria-hidden="true" /><text>新建菜品分类</text></view>
+    </button>
+  </view>
+
+  <t-popup visible="{{sheetOpen}}" placement="center" close-on-overlay-click="{{!saving}}" bind:visible-change="onVisibilityChange">
+    <view class="category-sheet">
+      <view class="category-sheet__head">
+        <text class="category-sheet__title">{{editingId ? '编辑分类' : '新建分类'}}</text>
+      </view>
+      <view class="category-sheet__body">
+        <view class="category-sheet__field">
+          <text class="form-label">分类名称</text>
+          <input value="{{name}}" class="field" placeholder="请输入名称" maxlength="80" aria-label="分类名称"
+            disabled="{{saving}}" bindinput="changeName" />
+        </view>
+        <view class="category-sheet__field">
+          <text class="form-label">分类图片</text>
+          <view class="category-sheet__image-row">
+            <view class="category-sheet__image image-placeholder" bindtap="showPhoto" role="button" aria-label="预览分类图">
+              <t-icon name="image" size="43rpx" aria-hidden="true" />
+              <image wx:if="{{localImage || imageUrl}}" src="{{localImage || imageUrl}}" mode="aspectFill" />
+            </view>
+            <button class="secondary" bindtap="selectPhoto" disabled="{{saving}}">{{localImage || imageUrl ? '替换图片' : '选择图片'}}</button>
+          </view>
+        </view>
+        <text wx:if="{{formError}}" class="form-error" aria-live="polite">{{formError}}</text>
+      </view>
+      <view class="category-sheet__actions">
+        <button class="quiet" bindtap="closeEditor" disabled="{{saving}}">取消</button>
+        <button class="quiet category-sheet__submit" loading="{{saving}}" disabled="{{saving}}" bindtap="saveCategory">
+          {{editingId ? '保存' : '创建'}}
+        </button>
+      </view>
+    </view>
+  </t-popup>
+</view>

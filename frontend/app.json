@@ -6,6 +6,15 @@
   ],
   "subPackages": [
     {
+      "root": "packages/catalog",
+      "name": "catalog",
+      "pages": [
+        "recipe/detail",
+        "recipe/editor",
+        "category/manage"
+      ]
+    },
+    {
       "root": "vegetable",
       "pages": [
         "index/create",
@@ -18,39 +27,34 @@
     "pages/index/index": {
       "network": "all",
       "packages": [
-        "vegetable"
+        "catalog"
       ]
     }
   },
   "window": {
-    "navigationBarTitleText": "爱情厨房",
-    "navigationBarBackgroundColor": "#FAF6F1",
+    "navigationBarTitleText": "家庭厨房",
+    "navigationBarBackgroundColor": "#F7F7EF",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#FAF6F1"
+    "backgroundColor": "#F7F7EF"
   },
   "tabBar": {
-    "color": "#775E50",
-    "selectedColor": "#B74935",
+    "custom": true,
+    "color": "#586452",
+    "selectedColor": "#3D5A3E",
     "backgroundColor": "#FFFFFF",
     "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页",
-        "iconPath": "static/tab/home.png",
-        "selectedIconPath": "static/tab/home-active.png"
+        "text": "首页"
       },
       {
         "pagePath": "pages/order/order",
-        "text": "订单",
-        "iconPath": "static/tab/order.png",
-        "selectedIconPath": "static/tab/order-active.png"
+        "text": "订单"
       },
       {
         "pagePath": "pages/user/user",
-        "text": "账号",
-        "iconPath": "static/tab/account.png",
-        "selectedIconPath": "static/tab/account-active.png"
+        "text": "账号"
       }
     ]
   },

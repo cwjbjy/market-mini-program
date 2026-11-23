@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.marketkitchen.mapper.CategoryMapper">
+    <resultMap id="categoryWithRecipes" type="cn.marketkitchen.mapper.model.CategoryRow">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="image" column="image"/>
+        <collection property="recipes" resultMap="cn.marketkitchen.mapper.RecipeMapper.recipe"
+                    columnPrefix="recipe_" notNullColumn="id"/>
+    </resultMap>
+
+    <sql id="categoryMenu">
+        SELECT c.id, c.name, c.image,
+               r.id AS recipe_id, r.category_id AS recipe_category_id, r.name AS recipe_name,
+               r.image AS recipe_image, r.ingredients AS recipe_ingredients, r.steps AS recipe_steps,
+               r.order_count AS recipe_order_count, r.sort_order AS recipe_sort_order
+        FROM categories c LEFT JOIN recipes r ON r.category_id = c.id
+    </sql>
+
+    <sql id="menuOrder">
+        ORDER BY c.sort_order, r.sort_order, r.id
+    </sql>
+
+    <select id="listWithRecipes" resultMap="categoryWithRecipes" resultOrdered="true">
+        <include refid="categoryMenu"/>
+        <include refid="menuOrder"/>
+    </select>
+
+    <select id="findWithRecipes" resultMap="categoryWithRecipes">
+        <include refid="categoryMenu"/>
+        WHERE c.id = #{id}
+        <include refid="menuOrder"/>
+    </select>
+</mapper>

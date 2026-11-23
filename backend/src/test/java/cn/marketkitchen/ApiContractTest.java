@@ -16,13 +16,13 @@ import cn.marketkitchen.controller.CategoryController;
 import cn.marketkitchen.controller.ImageController;
 import cn.marketkitchen.controller.OrderController;
 import cn.marketkitchen.controller.RecipeController;
-import cn.marketkitchen.entity.Category;
-import cn.marketkitchen.entity.Recipe;
+import cn.marketkitchen.domain.Category;
+import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.exception.BusinessException;
-import cn.marketkitchen.exception.GlobalExceptionHandler;
-import cn.marketkitchen.service.CatalogService;
-import cn.marketkitchen.service.ImageStorage;
+import cn.marketkitchen.image.LocalImageStorage;
+import cn.marketkitchen.service.CategoryService;
 import cn.marketkitchen.service.OrderService;
+import cn.marketkitchen.web.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -40,23 +40,23 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class ApiContractTest {
     @TempDir
     Path storage;
-    private CatalogService catalog;
+    private CategoryService categoryService;
     private OrderService orders;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        catalog = mock(CatalogService.class);
+        categoryService = mock(CategoryService.class);
         orders = mock(OrderService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new CategoryController(catalog), new RecipeController(catalog),
-                        new OrderController(orders), new ImageController(new ImageStorage(storage.toString())))
+        mvc = MockMvcBuilders.standaloneSetup(new CategoryController(categoryService), new RecipeController(categoryService),
+                        new OrderController(orders), new ImageController(new LocalImageStorage(storage.toString())))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
     @Test
     void listsCategoriesWithNativeFieldNames() throws Exception {
         var recipe = new Recipe("r1", "c1", "土豆丝", "/static/images/market/potato.jpg", "土豆", "切丝炒熟", 4);
-        when(catalog.categories()).thenReturn(List.of(new Category("c1", "家常菜", recipe.image(), List.of(recipe))));
+        when(categoryService.categories()).thenReturn(List.of(new Category("c1", "家常菜", recipe.image(), List.of(recipe))));
         mvc.perform(get("/api/categories"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
@@ -75,7 +75,7 @@ class ApiContractTest {
                 .andExpect(jsonPath("$.message").value("菜品数量必须大于 0"));
         verifyNoInteractions(orders);
 
-        when(catalog.recipe("missing")).thenThrow(BusinessException.notFound("菜谱不存在"));
+        when(categoryService.recipe("missing")).thenThrow(BusinessException.notFound("菜谱不存在"));
         mvc.perform(get("/api/recipes/missing")).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("菜谱不存在"));
 

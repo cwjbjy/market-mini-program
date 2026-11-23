@@ -3,12 +3,20 @@ server:
 spring:
   application:
     name: market-kitchen
-  data:
-    mongodb:
-      uri: ${MARKET_MONGODB_URI:mongodb://localhost:27017/market_app?replicaSet=rs0}
+  datasource:
+    url: ${MARKET_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/market_app?sslMode=DISABLED&allowPublicKeyRetrieval=true}
+    username: ${MARKET_MYSQL_USER:market}
+    password: ${MARKET_MYSQL_PASSWORD:market-local}
+  sql:
+    init:
+      mode: always
   servlet:
     multipart:
       max-file-size: 10MB
       max-request-size: 11MB
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    local-cache-scope: statement
 market:
   upload-dir: ${MARKET_UPLOAD_DIR:local/uploads}

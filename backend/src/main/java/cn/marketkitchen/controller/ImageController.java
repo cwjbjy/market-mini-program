@@ -1,8 +1,8 @@
 package cn.marketkitchen.controller;
 
-import cn.marketkitchen.common.ApiResponse;
-import cn.marketkitchen.dto.CatalogDtos.UploadedImage;
-import cn.marketkitchen.service.ImageStorage;
+import cn.marketkitchen.image.ImageReference;
+import cn.marketkitchen.image.LocalImageStorage;
+import cn.marketkitchen.web.ApiResponse;
 import java.io.IOException;
 import java.time.Duration;
 import org.springframework.core.io.Resource;
@@ -20,9 +20,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 public class ImageController {
-    private final ImageStorage images;
+    private final LocalImageStorage images;
 
-    public ImageController(ImageStorage images) {
+    public ImageController(LocalImageStorage images) {
         this.images = images;
     }
 
@@ -32,10 +32,12 @@ public class ImageController {
         return ApiResponse.success(new UploadedImage(images.store(file)));
     }
 
-    @GetMapping(ImageStorage.PUBLIC_PATH + "{filename}")
+    @GetMapping(ImageReference.PUBLIC_PATH + "{filename}")
     public ResponseEntity<Resource> get(@PathVariable String filename) throws IOException {
         var image = images.read(filename);
         return ResponseEntity.ok().contentType(image.type()).header("X-Content-Type-Options", "nosniff")
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePublic()).body(image.resource());
     }
+
+    public record UploadedImage(String path) {}
 }

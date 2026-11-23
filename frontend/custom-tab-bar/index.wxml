@@ -1,0 +1,17 @@
+<view class="kitchen-tabs">
+  <navigator url="/pages/index/index" open-type="switchTab" class="kitchen-tabs__link {{selected === 'home' ? 'kitchen-tabs__link--selected' : ''}}" aria-label="{{selected === 'home' ? '首页，已选中' : '首页'}}">
+    <image wx:if="{{selected === 'home'}}" class="kitchen-tabs__icon" src="/static/tab/home-active.png" mode="aspectFit" />
+    <image wx:else class="kitchen-tabs__icon" src="/static/tab/home.png" mode="aspectFit" />
+    <text>首页</text>
+  </navigator>
+  <navigator url="/pages/order/order" open-type="switchTab" class="kitchen-tabs__link {{selected === 'order' ? 'kitchen-tabs__link--selected' : ''}}" aria-label="{{selected === 'order' ? '订单，已选中' : '订单'}}">
+    <image wx:if="{{selected === 'order'}}" class="kitchen-tabs__icon" src="/static/tab/order-active.png" mode="aspectFit" />
+    <image wx:else class="kitchen-tabs__icon" src="/static/tab/order.png" mode="aspectFit" />
+    <text>订单</text>
+  </navigator>
+  <navigator url="/pages/user/user" open-type="switchTab" class="kitchen-tabs__link {{selected === 'account' ? 'kitchen-tabs__link--selected' : ''}}" aria-label="{{selected === 'account' ? '账号，已选中' : '账号'}}">
+    <image wx:if="{{selected === 'account'}}" class="kitchen-tabs__icon" src="/static/tab/account-active.png" mode="aspectFit" />
+    <image wx:else class="kitchen-tabs__icon" src="/static/tab/account.png" mode="aspectFit" />
+    <text>账号</text>
+  </navigator>
+</view>

@@ -3,6 +3,7 @@
 /.verification/
 /local/
 /.env
+/.env.tmp.*
 /backend/target/
 /backend/local/*
 !/backend/local/uploads/

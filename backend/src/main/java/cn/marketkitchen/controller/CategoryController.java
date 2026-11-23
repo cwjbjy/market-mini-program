@@ -1,9 +1,9 @@
 package cn.marketkitchen.controller;
 
-import cn.marketkitchen.common.ApiResponse;
+import cn.marketkitchen.domain.Category;
 import cn.marketkitchen.dto.CatalogDtos.SaveCategory;
-import cn.marketkitchen.entity.Category;
-import cn.marketkitchen.service.CatalogService;
+import cn.marketkitchen.service.CategoryService;
+import cn.marketkitchen.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -20,31 +20,31 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/categories")
 public class CategoryController {
-    private final CatalogService catalog;
+    private final CategoryService categoryService;
 
-    public CategoryController(CatalogService catalog) {
-        this.catalog = catalog;
+    public CategoryController(CategoryService categoryService) {
+        this.categoryService = categoryService;
     }
 
     @GetMapping
     public ApiResponse<List<Category>> list() {
-        return ApiResponse.success(catalog.categories());
+        return ApiResponse.success(categoryService.categories());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<Category> create(@Valid @RequestBody SaveCategory input) {
-        return ApiResponse.success(catalog.createCategory(input));
+        return ApiResponse.success(categoryService.createCategory(input));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<Category> update(@PathVariable String id, @Valid @RequestBody SaveCategory input) {
-        return ApiResponse.success(catalog.updateCategory(id, input));
+        return ApiResponse.success(categoryService.updateCategory(id, input));
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable String id) {
-        catalog.deleteCategory(id);
+        categoryService.deleteCategory(id);
         return ApiResponse.success(null);
     }
 }

@@ -1,0 +1,34 @@
+.editor { display: flex; flex-direction: column; padding: var(--gutter) var(--gutter) 50rpx; padding-bottom: calc(40rpx + env(safe-area-inset-bottom)); }
+.editor-panel { padding: var(--gutter); }
+.editor-photo { --photo-size: 218rpx; margin-bottom: var(--field-gap); }
+.editor-photo__head { display: flex; align-items: center; justify-content: space-between; min-height: 51rpx; margin-bottom: 13rpx; }
+.editor-photo__head .form-label { margin-bottom: 0; }
+.editor-fields { display: flex; flex-direction: column; }
+.editor-fields > view + view { margin-top: var(--field-gap); }
+.photo { width: var(--photo-size); height: var(--photo-size); border-radius: var(--field-radius); }
+button.photo.photo--choose {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: var(--photo-size);
+  max-width: var(--photo-size);
+  padding: 12rpx;
+  border: 2rpx dashed var(--line-strong);
+  background: var(--field);
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.4;
+  font-size: 25rpx;
+  font-weight: 650;
+}
+.photo__symbol { display: flex; flex: none; align-items: center; justify-content: center; width: 52rpx; height: 52rpx; }
+.photo__label { margin-top: 8rpx; }
+.photo__hint { max-width: 100%; margin-top: 5rpx; color: var(--muted); font-size: 20rpx; font-weight: 400; white-space: normal; }
+.photo-replace { min-height: 58rpx; padding: 0 15rpx; color: var(--brand); font-size: 24rpx; }
+.field--picker text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field--area { height: 130rpx; }
+.field--steps { height: 219rpx; }
+.editor-submit { margin-top: 30rpx; }
+.editor-submit .primary { display: flex; width: 100%; min-height: 90rpx; }
+.editor-submit .form-error { margin-bottom: 12rpx; }

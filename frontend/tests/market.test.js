@@ -26,6 +26,32 @@ function mockCartStorage() {
   };
 }
 
+function mockPage(modulePath) {
+  let page;
+  global.Page = (definition) => {
+    page = { ...definition, data: structuredClone(definition.data) };
+    page.setData = (patch, callback) => {
+      Object.assign(page.data, patch);
+      if (callback) callback();
+    };
+  };
+  try {
+    delete require.cache[require.resolve(modulePath)];
+    require(modulePath);
+  } finally {
+    delete global.Page;
+  }
+  return page;
+}
+
+function mockHomePage() {
+  const page = mockPage('../pages/index/index');
+  page.onLoad();
+  page.categories = [{ id: 'category', recipes: [{ id: 'recipe:one', name: '番茄炒蛋' }] }];
+  page.renderCatalog();
+  return page;
+}
+
 test('cart stores a stable checkout snapshot through retry and resets only after acceptance', () => {
   mockCartStorage();
   cart.replaceQuantity('recipe:B', 5);
@@ -110,7 +136,7 @@ test('trial and release do not silently use the local API', async () => {
   await assert.rejects(api.getCategories(), /请配置当前版本/);
 });
 
-test('home reuses the last request after a timeout and switches tabs only after success', async () => {
+test('home reviews the cart before submitting and reuses the last request after a timeout', async () => {
   mockCartStorage();
   cart.replaceQuantity('recipe:one', 2);
   const requests = [];
@@ -126,27 +152,113 @@ test('home reuses the last request after a timeout and switches tabs only after 
     switchTab: (options) => tabs.push(options.url),
   });
 
-  let page;
-  global.Page = (definition) => {
-    page = { ...definition, data: structuredClone(definition.data) };
-    page.setData = (patch, callback) => {
-      Object.assign(page.data, patch);
-      if (callback) callback();
-    };
-  };
-  require('../pages/index/index');
-  delete global.Page;
-  page.onLoad();
-  page.categories = [{ id: 'category', recipes: [{ id: 'recipe:one', name: '番茄炒蛋' }] }];
-  page.renderCatalog();
+  const page = mockHomePage();
+  await page.submitOrder();
+  page.openCart();
+  assert.equal(page.data.cartOpen, true);
+  assert.equal(cart.read().pending, null);
+  assert.deepEqual(requests, []);
 
   await page.submitOrder();
   assert.equal(page.data.cartPending, true);
   assert.equal(page.data.totalQuantity, 2);
   assert.deepEqual(tabs, []);
 
+  page.closeCart();
+  page.openCart();
   await page.submitOrder();
   assert.deepEqual(requests[1], requests[0]);
   assert.equal(page.data.totalQuantity, 0);
   assert.deepEqual(tabs, ['/pages/order/order']);
+});
+
+test('clearing the cart requires confirmation and cancellation preserves selected items', async () => {
+  mockCartStorage();
+  cart.replaceQuantity('recipe:one', 2);
+  const dialogs = [];
+  global.wx.showModal = (options) => dialogs.push(options);
+  const page = mockHomePage();
+  page.openCart();
+
+  const canceled = page.clearCart();
+  await page.clearCart();
+  assert.equal(dialogs.length, 1);
+  assert.equal(dialogs[0].confirmText, '清空');
+  assert.equal(page.data.totalQuantity, 2);
+  dialogs[0].success({ confirm: false });
+  await canceled;
+  assert.equal(page.data.cartOpen, true);
+  assert.equal(cart.read().items[0].quantity, 2);
+
+  const confirmed = page.clearCart();
+  dialogs[1].success({ confirm: true });
+  await confirmed;
+  assert.deepEqual(cart.read().items, []);
+  assert.equal(page.data.totalQuantity, 0);
+  assert.equal(page.data.cartOpen, false);
+});
+
+test('recipe details add a serving to the shared cart and preserve the edit route', async () => {
+  mockCartStorage();
+  const requests = [];
+  const toasts = [];
+  const routes = [];
+  Object.assign(global.wx, {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    request: (request) => {
+      requests.push(request.method);
+      request.success({ statusCode: 200, data: { code: 0, data: { id: 'recipe:one', name: '番茄炒蛋' } } });
+    },
+    showToast: (options) => toasts.push(options.title),
+    navigateTo: (options) => routes.push(options.url),
+  });
+  cart.replaceQuantity('recipe:one', 2);
+  const detail = mockPage('../packages/catalog/recipe/detail');
+  detail.onLoad({ recipeId: 'recipe:one' });
+  detail.addToCart();
+  assert.equal(cart.read().items[0].quantity, 2);
+  await detail.loadRecipe();
+  detail.addToCart();
+  assert.equal(toasts.at(-1), '已加入购物车');
+  assert.equal(mockHomePage().data.totalQuantity, 3);
+  assert.equal(cart.read().pending, null);
+  assert.deepEqual(requests, ['GET']);
+
+  const pending = cart.prepareOrder();
+  detail.addToCart();
+  assert.match(toasts.at(-1), /上一次/);
+  assert.equal(cart.read().items[0].quantity, 3);
+  assert.deepEqual(cart.read().pending, pending);
+
+  cart.clearPending(pending.requestId);
+  cart.replaceQuantity('recipe:one', 9999);
+  detail.addToCart();
+  assert.equal(toasts.at(-1), '这道菜已达到数量上限');
+  assert.equal(cart.read().items[0].quantity, 9999);
+
+  detail.editRecipe();
+  assert.deepEqual(routes, ['/packages/catalog/recipe/editor?recipeId=recipe%3Aone']);
+});
+
+test('legacy recipe and category page links redirect with their original parameters', () => {
+  const redirects = [];
+  const tabs = [];
+  global.wx = {
+    redirectTo: (options) => redirects.push(options),
+    switchTab: (options) => tabs.push(options.url),
+  };
+
+  mockPage('../vegetable/index/detail').onLoad({ recipeId: 'recipe:one' });
+  mockPage('../vegetable/index/create').onLoad({ categoryId: 'category:A/B' });
+  mockPage('../vegetable/index/create').onLoad({ recipeId: 'recipe:one' });
+  mockPage('../vegetable/category/manage').onLoad();
+
+  assert.deepEqual(redirects.map(({ url }) => url), [
+    '/packages/catalog/recipe/detail?recipeId=recipe%3Aone',
+    '/packages/catalog/recipe/editor?categoryId=category%3AA%2FB',
+    '/packages/catalog/recipe/editor?recipeId=recipe%3Aone',
+    '/packages/catalog/category/manage',
+  ]);
+  redirects[0].fail();
+  assert.deepEqual(tabs, ['/pages/index/index']);
 });

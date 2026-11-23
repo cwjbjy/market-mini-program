@@ -1,9 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-mongo_pid=''
+: "${MARKET_MYSQL_PASSWORD:?Set MARKET_MYSQL_PASSWORD for the application user}"
+: "${MARKET_MYSQL_ROOT_PASSWORD:?Set MARKET_MYSQL_ROOT_PASSWORD for MySQL initialization}"
+export MYSQL_PASSWORD="$MARKET_MYSQL_PASSWORD"
+export MYSQL_ROOT_PASSWORD="$MARKET_MYSQL_ROOT_PASSWORD"
+export MYSQL_USER="${MARKET_MYSQL_USER:-market}"
+
+mysql_pid=''
 backend_pid=''
-mongo_uri='mongodb://127.0.0.1:27017/admin?directConnection=true&serverSelectionTimeoutMS=1000'
 
 stop_child() {
     local pid="$1"
@@ -16,48 +21,32 @@ stop_child() {
 stop_services() {
     trap '' TERM INT
     stop_child "$backend_pid"
-    stop_child "$mongo_pid"
-}
-
-wait_for_mongo() {
-    local check="$1"
-    local deadline=$((SECONDS + 90))
-    until mongosh "$mongo_uri" --quiet --norc --eval "$check" >/dev/null 2>&1; do
-        if ! kill -0 "$mongo_pid" 2>/dev/null || (( SECONDS >= deadline )); then
-            echo 'MongoDB did not become ready.' >&2
-            return 1
-        fi
-        sleep 1
-    done
+    stop_child "$mysql_pid"
 }
 
 trap stop_services EXIT
 trap 'exit 0' TERM INT
 
-chown mongodb:mongodb /data/db
-mkdir -p "$MARKET_UPLOAD_DIR"
-chown market:market "$MARKET_UPLOAD_DIR"
+install -d -o market -g market "$MARKET_UPLOAD_DIR"
 
-gosu mongodb mongod --dbpath /data/db --replSet rs0 --bind_ip 127.0.0.1 &
-mongo_pid=$!
+docker-entrypoint.sh mysqld --bind-address=127.0.0.1 --mysqlx=OFF &
+mysql_pid=$!
 
-wait_for_mongo 'quit(db.runCommand({ping: 1}).ok ? 0 : 1)'
-mongosh "$mongo_uri" --quiet --norc --eval '
-    try {
-        rs.status();
-    } catch (error) {
-        if (error.code !== 94) throw error;
-        const result = rs.initiate({_id: "rs0", members: [{_id: 0, host: "localhost:27017"}]});
-        if (!result.ok) throw new Error(JSON.stringify(result));
-    }
-'
-wait_for_mongo 'quit(db.hello().isWritablePrimary ? 0 : 1)'
+deadline=$((SECONDS + 120))
+until MYSQL_PWD="$MYSQL_PASSWORD" mysql --connect-timeout=2 --protocol=TCP -h 127.0.0.1 \
+        -u "$MYSQL_USER" "$MYSQL_DATABASE" -e 'SELECT 1' >/dev/null 2>&1; do
+    if ! kill -0 "$mysql_pid" 2>/dev/null || (( SECONDS >= deadline )); then
+        echo 'MySQL did not become ready. Check the database volume and credentials.' >&2
+        exit 1
+    fi
+    sleep 1
+done
 
 gosu market "$@" &
 backend_pid=$!
 
-while kill -0 "$mongo_pid" 2>/dev/null && kill -0 "$backend_pid" 2>/dev/null; do
+while kill -0 "$mysql_pid" 2>/dev/null && kill -0 "$backend_pid" 2>/dev/null; do
     sleep 1
 done
-echo 'MongoDB or the backend exited unexpectedly.' >&2
+echo 'MySQL or the backend exited unexpectedly.' >&2
 exit 1

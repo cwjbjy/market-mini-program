@@ -16,12 +16,23 @@ function sorted(items) {
   });
 }
 
-function replaceQuantity(recipeId, quantity) {
-  const { items, pending } = read();
+function saveQuantity({ items, pending }, recipeId, quantity) {
   if (pending) throw new Error('请先确认上一次提交结果');
   const next = items.filter((item) => item.recipeId !== recipeId);
   if (Number.isInteger(quantity) && quantity > 0) next.push({ recipeId, quantity });
   save(sorted(next), null);
+}
+
+function replaceQuantity(recipeId, quantity) {
+  saveQuantity(read(), recipeId, quantity);
+}
+
+function adjustQuantity(recipeId, delta) {
+  const state = read();
+  const previous = state.items.find((item) => item.recipeId === recipeId)?.quantity || 0;
+  const quantity = Math.max(0, Math.min(9999, previous + delta));
+  saveQuantity(state, recipeId, quantity);
+  return quantity !== previous;
 }
 
 function prepareOrder() {
@@ -51,4 +62,4 @@ function clear() {
   save([], null);
 }
 
-module.exports = { read, replaceQuantity, prepareOrder, clearPending, acceptOrder, clear };
+module.exports = { read, replaceQuantity, adjustQuantity, prepareOrder, clearPending, acceptOrder, clear };
