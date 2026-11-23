@@ -13,14 +13,6 @@
         "recipe/editor",
         "category/manage"
       ]
-    },
-    {
-      "root": "vegetable",
-      "pages": [
-        "index/create",
-        "index/detail",
-        "category/manage"
-      ]
     }
   ],
   "preloadRule": {

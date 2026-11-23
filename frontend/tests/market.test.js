@@ -239,26 +239,3 @@ test('recipe details add a serving to the shared cart and preserve the edit rout
   detail.editRecipe();
   assert.deepEqual(routes, ['/packages/catalog/recipe/editor?recipeId=recipe%3Aone']);
 });
-
-test('legacy recipe and category page links redirect with their original parameters', () => {
-  const redirects = [];
-  const tabs = [];
-  global.wx = {
-    redirectTo: (options) => redirects.push(options),
-    switchTab: (options) => tabs.push(options.url),
-  };
-
-  mockPage('../vegetable/index/detail').onLoad({ recipeId: 'recipe:one' });
-  mockPage('../vegetable/index/create').onLoad({ categoryId: 'category:A/B' });
-  mockPage('../vegetable/index/create').onLoad({ recipeId: 'recipe:one' });
-  mockPage('../vegetable/category/manage').onLoad();
-
-  assert.deepEqual(redirects.map(({ url }) => url), [
-    '/packages/catalog/recipe/detail?recipeId=recipe%3Aone',
-    '/packages/catalog/recipe/editor?categoryId=category%3AA%2FB',
-    '/packages/catalog/recipe/editor?recipeId=recipe%3Aone',
-    '/packages/catalog/category/manage',
-  ]);
-  redirects[0].fail();
-  assert.deepEqual(tabs, ['/pages/index/index']);
-});
