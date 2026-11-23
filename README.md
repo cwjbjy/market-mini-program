@@ -9,7 +9,8 @@
 | `frontend/` | 原生小程序、TDesign 组件依赖和静态素材 |
 | `backend/` | Java 17、Spring Boot 3.5.14 和 MyBatis-Plus，按 controller、service、domain、repository、mapper 等职责分层 |
 | `compose.yml` | 本地 MySQL 8.0 容器和数据卷 |
-| `Dockerfile` | 将后端和 MySQL 8.0 打包到同一个镜像 |
+| `Dockerfile` | 构建 Java 后端镜像 |
+| `compose.prod.yml` | 部署 Java 后端和独立的 MySQL 容器 |
 
 `controller` 提供 HTTP 接口，`dto` 定义请求数据，`web` 放置统一响应和 HTTP 异常处理。`CategoryController` 和 `RecipeController` 共用 `CategoryService`。Service 处理业务规则和事务，Repository 接收 `domain` 中的业务对象，并通过 Mapper 和 `mapper.model` 中的行对象读写 MySQL。菜单联查、订单明细和下单锁定的 SQL 位于 `backend/src/main/resources/mapper/`。`image` 包负责图片引用校验和本地文件存储。
 
@@ -54,44 +55,25 @@ Set-Location backend
 
 ## Docker 部署
 
-在项目根目录构建包含 Java 后端和 MySQL 8.0 的镜像。
+在项目根目录可单独构建 Java 后端镜像。
 
 ```powershell
 docker build -t market-kitchen:local .
 ```
 
-在本机使用已迁移的数据库时，先停止 Compose 的 MySQL，并确认宿主机上的开发后端已释放 `8080` 端口。同一个 MySQL 数据卷每次只交给一个容器。
+线上 Compose 通过项目内部网络连接 MySQL，保留原有的 `mysql_data` 数据卷和 `uploads` 图片目录。Java 后端默认通过宿主机 `127.0.0.1:9001` 接收反向代理流量。
 
-```powershell
-docker compose stop mysql
-$config = docker compose config --format json | ConvertFrom-Json
-$mysqlVolume = $config.volumes.mysql_data.name
-$env:MARKET_MYSQL_USER = $config.services.mysql.environment.MYSQL_USER
-$env:MARKET_MYSQL_PASSWORD = $config.services.mysql.environment.MYSQL_PASSWORD
-$env:MARKET_MYSQL_ROOT_PASSWORD = $config.services.mysql.environment.MYSQL_ROOT_PASSWORD
-New-Item -ItemType Directory -Force -Path backend/local/uploads | Out-Null
-$uploads = (Resolve-Path backend/local/uploads).Path
-docker run -d --name market-kitchen --restart unless-stopped --stop-timeout 45 `
-  -p 127.0.0.1:8080:8080 `
-  --env MARKET_MYSQL_USER --env MARKET_MYSQL_PASSWORD --env MARKET_MYSQL_ROOT_PASSWORD `
-  --mount "type=volume,source=$mysqlVolume,target=/var/lib/mysql" `
-  --mount "type=bind,source=$uploads,target=/data/uploads" `
-  market-kitchen:local
-```
-
-合并容器在 MySQL 可用后启动后端。`8080` 提供 HTTP，MySQL 仅监听容器内的回环地址。`/var/lib/mysql` 保存数据库，`/data/uploads` 保存上传图片。切回本地开发时，先执行 `docker stop market-kitchen`，再执行 `docker compose up -d --wait`。已创建的合并容器可在停止 Compose MySQL 后用 `docker start market-kitchen` 重新启动。
-
-异机部署时，为合并容器设置 `MARKET_MYSQL_PASSWORD` 和 `MARKET_MYSQL_ROOT_PASSWORD`，在目标主机创建并挂载新的 `/var/lib/mysql` 持久卷。使用 `mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --no-create-info --skip-triggers market_app` 从本机导出数据，再用目标容器里的 `mysql` 导入已经初始化表结构的空库。把 `backend/local/uploads` 中的图片复制到目标主机并挂载到 `/data/uploads`，由部署环境将 HTTPS 请求转发到后端端口。
+首次异机部署要上线本地已有菜单时，使用 `mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --no-create-info --skip-triggers market_app` 从本机导出数据，再用线上 MySQL 容器里的 `mysql` 客户端导入已经初始化表结构的空库。把 `backend/local/uploads` 中的图片复制到目标主机的部署目录下。
 
 ### GitHub Actions 发布到阿里云
 
-分支推送、PR 和版本 tag 都会运行后端测试。推送 `1.0.0` 或 `v1.0.0` 这类 tag 时，测试通过后构建 `linux/amd64` 合并镜像，推送到杭州 ACR 的 `node_caowj/market-kitchen` 仓库。流水线通过 SSH 在 `/opt/market-kitchen` 用 `docker compose pull` 和 `docker compose up -d --wait` 更新容器。新容器通过健康检查后记录本次镜像摘要，启动失败时尝试恢复上一版。MySQL 和上传图片分别存放于持久卷和挂载目录。
+推送任意分支时，CI 使用 GitHub runner 预装的 MySQL 执行后端测试。测试通过后构建 `linux/amd64` Java 后端镜像，以 `sha-<提交 SHA>` 标记并推送到杭州 ACR 的 `node_caowj/market-kitchen` 仓库。PR 只运行测试。生产发布通过 SSH 在 `/opt/market-kitchen` 拉取并更新后端镜像，复用服务器已有的 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`。家庭厨房拥有独立的 MySQL 容器和数据卷。新后端通过健康检查后记录本次镜像摘要，启动失败时尝试恢复上一版。
 
 首次准备包括以下四步。
 
 1. 在阿里云 ACR 创建 `node_caowj/market-kitchen` 私有镜像仓库。
 2. 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 配置下表。SSH 端口默认为 22，可通过变量 `DEPLOY_SSH_PORT` 修改。
-3. 为部署用户准备可写的 `/opt/market-kitchen`，服务器需要 Docker Compose 和 Bash，SSH 端口需对部署 runner 可达。使用部署用户在服务器执行 `docker login registry.cn-hangzhou.aliyuncs.com`，为私有镜像拉取配置凭据。将部署专用 SSH 公钥加入该用户的 `authorized_keys`。
+3. 为部署用户准备可写的 `/opt/market-kitchen`，服务器需要 Docker Compose 和 Bash，SSH 端口需对部署 runner 可达。部署用户需要登录 ACR，并确认服务器本地已有 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`。该镜像只需在服务器预拉取一次。将部署专用 SSH 公钥加入该用户的 `authorized_keys`。
 4. 将 `docker/init-env.sh` 上传到服务器的 `/opt/market-kitchen/init-env.sh`。使用部署用户在服务器执行以下命令。脚本用 OpenSSL 生成应用账号和 root 的密码，保留已有的 `.env`。宿主机 Nginx 将 HTTPS API 域名反代到 `127.0.0.1:9001`，可通过 `.env` 中的 `MARKET_HOST_PORT` 修改本机端口。该域名需要同时代理 `/api/` 和 `/static/images/market/`。
 
    ```sh
@@ -105,14 +87,13 @@ docker run -d --name market-kitchen --restart unless-stopped --stop-timeout 45 `
 | `DEPLOY_HOST`、`DEPLOY_USER` | 服务器地址与 SSH 用户 |
 | `DEPLOY_SSH_KEY` | 部署专用 SSH 私钥 |
 
-提交并推送包含本工作流和后端改动的代码后，打一个新版本 tag 并推送。
+配置完成后，提交代码并推送分支即可发布。
 
 ```powershell
-git tag 1.0.0
-git push origin 1.0.0
+git push
 ```
 
-首次部署使用新的 MySQL 卷。要上线本地已有菜单，按上面的方式将 `market_app` 导入服务器容器，并把图片复制到 `/opt/market-kitchen/uploads`。每次成功部署的配置和镜像摘要保存为部署目录下的 `compose.prod.yml` 和 `.market-image`。在服务器查看当前部署可执行以下命令。
+首次部署会创建专用 MySQL 容器。若服务器曾运行后端与 MySQL 合并镜像，CI 会先确认两边的 MySQL 版本一致，再停止旧容器并将该数据卷交给新的 MySQL 容器。每次成功部署的配置和镜像摘要保存为部署目录下的 `compose.prod.yml` 和 `.market-image`。在服务器查看当前部署可执行以下命令。
 
 ```sh
 cd /opt/market-kitchen

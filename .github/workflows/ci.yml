@@ -4,14 +4,13 @@ on:
   pull_request:
   push:
     branches: ['**']
-    tags: ['[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+']
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.ref_type == 'tag' && 'market-kitchen-production' || format('market-kitchen-{0}', github.ref) }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  group: ${{ github.event_name == 'push' && 'market-kitchen-production' || format('market-kitchen-{0}', github.ref) }}
+  queue: max
 
 env:
   ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
@@ -19,21 +18,9 @@ env:
 
 jobs:
   verify:
+    if: github.event_name == 'pull_request' || github.event.deleted == false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: market-ci-test
-          MYSQL_ROOT_HOST: '%'
-        ports:
-          - 3306/tcp
-        options: >-
-          --health-cmd "mysqladmin ping --protocol=TCP --host=127.0.0.1 --silent"
-          --health-interval 5s
-          --health-timeout 4s
-          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -42,26 +29,24 @@ jobs:
           java-version: '17'
           cache: maven
           cache-dependency-path: backend/pom.xml
+      - name: Start the runner's preinstalled MySQL
+        run: sudo systemctl start mysql.service
       - name: Run backend and MySQL tests
         working-directory: backend
         env:
-          MARKET_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/?sslMode=DISABLED&allowPublicKeyRetrieval=true
+          MARKET_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/?sslMode=DISABLED&allowPublicKeyRetrieval=true
           MARKET_TEST_MYSQL_USER: root
-          MARKET_TEST_MYSQL_PASSWORD: market-ci-test
+          MARKET_TEST_MYSQL_PASSWORD: root
         run: mvn -B -ntp verify
 
   build-and-push:
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.event.deleted == false
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
-      - name: Validate release tag
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: '[[ "$RELEASE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]'
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -69,7 +54,7 @@ jobs:
           registry: ${{ env.ACR_REGISTRY }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
-      - name: Push backend and MySQL image to ACR
+      - name: Push backend image to ACR
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -77,14 +62,13 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ env.ACR_IMAGE }}:${{ github.ref_name }}
+          tags: ${{ env.ACR_IMAGE }}:sha-${{ github.sha }}
           provenance: false
           sbom: false
           cache-from: type=gha,scope=market-kitchen
           cache-to: type=gha,mode=max,scope=market-kitchen
 
   deploy:
-    if: github.ref_type == 'tag'
     needs: build-and-push
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -135,13 +119,45 @@ jobs:
           export MARKET_IMAGE=$2
           printf '%s\n' "$MARKET_IMAGE" > "$stage/image"
           compose=(docker compose --project-directory "$PWD" --env-file .env -f "$stage/compose.prod.yml")
-          "${compose[@]}" pull
-          if ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never; then
+          mysql_image=$("${compose[@]}" config --images mysql)
+          if ! docker image inspect "$mysql_image" >/dev/null 2>&1; then
+            echo "Preload $mysql_image on the server before deploying." >&2
+            exit 1
+          fi
+          "${compose[@]}" pull market
+
+          # Stop an earlier combined container before handing its data volume to MySQL.
+          old_app=$("${compose[@]}" ps --all --quiet market)
+          legacy=false
+          if [[ -n "$old_app" && -n "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$old_app")" ]]; then
+            if [[ ! -f compose.prod.yml || ! -s .market-image ]]; then
+              echo 'The existing combined release is missing its rollback configuration.' >&2
+              exit 1
+            fi
+            mysql_version() {
+              docker run --rm --pull never --network none --entrypoint mysqld "$1" --version |
+                sed -nE 's/.* Ver ([0-9.]+).*/\1/p'
+            }
+            old_version=$(mysql_version "$(docker inspect --format '{{.Image}}' "$old_app")")
+            new_version=$(mysql_version "$mysql_image")
+            if [[ -z "$old_version" || "$old_version" != "$new_version" ]]; then
+              echo "MySQL versions must match before switching the existing volume ($old_version -> $new_version)." >&2
+              exit 1
+            fi
+            docker stop --timeout 45 "$old_app" >/dev/null
+            legacy=true
+          fi
+
+          if ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never --no-recreate mysql \
+            || ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never --no-deps market; then
             "${compose[@]}" ps -a || true
             if [[ -f compose.prod.yml && -s .market-image ]]; then
               echo 'Restoring the previous release.' >&2
+              if [[ "$legacy" == true ]]; then
+                "${compose[@]}" stop mysql
+              fi
               MARKET_IMAGE=$(<.market-image) docker compose --env-file .env -f compose.prod.yml \
-                up -d --wait --wait-timeout 200 --pull missing
+                up -d --wait --wait-timeout 200 --pull missing --no-deps market
             fi
             exit 1
           fi

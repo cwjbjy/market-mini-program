@@ -1,17 +1,39 @@
 name: market-kitchen
 
 services:
+  mysql:
+    image: registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest
+    pull_policy: never
+    command: ["mysqld", "--mysqlx=OFF"]
+    environment:
+      MYSQL_DATABASE: market_app
+      MYSQL_USER: "${MARKET_MYSQL_USER:-market}"
+      MYSQL_PASSWORD: "${MARKET_MYSQL_PASSWORD:?Set the MySQL application password in .env}"
+      MYSQL_ROOT_PASSWORD: "${MARKET_MYSQL_ROOT_PASSWORD:?Set the MySQL root password in .env}"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -u \"$$MYSQL_USER\" \"$$MYSQL_DATABASE\" -e 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      start_period: 45s
+      retries: 6
+
   market:
     image: "${MARKET_IMAGE:?Set the release image}"
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
+      MARKET_MYSQL_URL: "jdbc:mysql://mysql:3306/market_app?sslMode=DISABLED&allowPublicKeyRetrieval=true"
       MARKET_MYSQL_USER: "${MARKET_MYSQL_USER:-market}"
       MARKET_MYSQL_PASSWORD: "${MARKET_MYSQL_PASSWORD:?Set the MySQL application password in .env}"
-      MARKET_MYSQL_ROOT_PASSWORD: "${MARKET_MYSQL_ROOT_PASSWORD:?Set the MySQL root password in .env}"
       JAVA_TOOL_OPTIONS: "${MARKET_JAVA_TOOL_OPTIONS:--Xms64m -Xmx256m}"
     ports:
       - "127.0.0.1:${MARKET_HOST_PORT:-9001}:8080"
     volumes:
-      - mysql_data:/var/lib/mysql
       - ./uploads:/data/uploads
     restart: unless-stopped
     stop_grace_period: 45s
