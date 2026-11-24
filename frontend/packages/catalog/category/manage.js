@@ -53,7 +53,6 @@ Page({
           image,
           imageUrl: api.mediaUrl(image),
           recipeCount: recipes.length,
-          sortId: encodeURIComponent(id),
         })),
         loadError: '',
       });

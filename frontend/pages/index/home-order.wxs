@@ -1,0 +1,79 @@
+var TOUCH_SLOP = 10;
+
+function sameItem(press, item) {
+  return press && press.kind === item.kind && press.id === item.id;
+}
+
+function point(touch) {
+  return { x: touch.clientX, y: touch.clientY };
+}
+
+function start(event, owner) {
+  var state = owner.getState();
+  var previous = state.homeOrderPress;
+  if (previous && previous.claimed && event.touches.length !== 1) {
+    owner.callMethod('cancelHomeDrag');
+    return false;
+  }
+  state.homeOrderPress = null;
+  if (event.touches.length !== 1) return;
+  var item = event.currentTarget.dataset;
+  state.homeOrderPress = { kind: item.kind, id: item.id, start: point(event.touches[0]), moved: false, claimed: false };
+}
+
+function hold(event, owner) {
+  var item = event.currentTarget.dataset;
+  var press = owner.getState().homeOrderPress;
+  if (!item.canDrag || !sameItem(press, item) || press.moved || press.claimed) return;
+  press.claimed = true;
+  owner.callMethod('startHomeDrag', { kind: item.kind, id: item.id, categoryId: item.categoryId, point: press.start });
+  return false;
+}
+
+function move(event, owner) {
+  var press = owner.getState().homeOrderPress;
+  if (!sameItem(press, event.currentTarget.dataset)) return;
+  if (event.touches.length !== 1) {
+    press.moved = true;
+    if (press.claimed) {
+      owner.callMethod('cancelHomeDrag');
+      return false;
+    }
+    return;
+  }
+  var next = point(event.touches[0]);
+  if (press.claimed) {
+    owner.callMethod('moveHomeDrag', next);
+    return false;
+  }
+  if (Math.max(Math.abs(next.x - press.start.x), Math.abs(next.y - press.start.y)) > TOUCH_SLOP) press.moved = true;
+}
+
+function end(event, owner) {
+  var press = owner.getState().homeOrderPress;
+  if (!sameItem(press, event.currentTarget.dataset) || !press.claimed) return;
+  var touch = event.changedTouches[0];
+  owner.callMethod('finishHomeDrag', touch ? point(touch) : null);
+  return false;
+}
+
+function cancel(event, owner) {
+  var press = owner.getState().homeOrderPress;
+  if (!sameItem(press, event.currentTarget.dataset)) return;
+  press.moved = true;
+  if (press.claimed) {
+    owner.callMethod('cancelHomeDrag');
+    return false;
+  }
+}
+
+function tap(event, owner) {
+  var state = owner.getState();
+  var item = event.currentTarget.dataset;
+  var press = state.homeOrderPress;
+  state.homeOrderPress = null;
+  if (sameItem(press, item) && (press.claimed || press.moved)) return false;
+  owner.callMethod('tapHomeItem', { kind: item.kind, id: item.id });
+}
+
+module.exports = { start: start, hold: hold, move: move, end: end, cancel: cancel, tap: tap };

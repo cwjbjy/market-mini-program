@@ -4,6 +4,7 @@ const api = require('../lib/api');
 const cart = require('../lib/cart');
 const { filterCategories } = require('../lib/search');
 const cardGestures = require('../packages/catalog/sort/layout.wxs');
+const homeGestures = require('../pages/index/home-order.wxs');
 
 test('search retains all categories for whitespace and matches partial names or one edit', () => {
   const categories = [
@@ -52,6 +53,197 @@ function mockHomePage() {
   page.renderCatalog();
   return page;
 }
+
+function mockHomeOrder({ recipeViewportBottom = 420, deferMeasure = false } = {}) {
+  mockCartStorage();
+  const page = mockHomePage();
+  page.categories = [
+    { id: 'a', name: '热菜', recipes: ['r1', 'r2', 'r3'].map((id) => ({ id, name: id })) },
+    { id: 'b', name: '凉菜', recipes: [{ id: 'r4', name: 'r4' }] },
+    { id: 'c', name: '汤羹', recipes: [] },
+  ];
+  page.setData({ loading: false });
+  page.renderCatalog();
+
+  const viewports = {
+    category: { left: 0, right: 80, top: 100, bottom: 420, height: 320 },
+    recipe: { left: 80, right: 375, top: 100, bottom: recipeViewportBottom, height: recipeViewportBottom - 100 },
+  };
+  const sectionBoxes = [{ top: 100, bottom: 365 }, { top: 365, bottom: 510 }, { top: 510, bottom: 900 }];
+  const recipeBoxes = [{ top: 140, bottom: 190 }, { top: 195, bottom: 277 }, { top: 282, bottom: 352 }];
+  page.createSelectorQuery = () => {
+    const selectors = [];
+    const query = {
+      select: (selector) => { selectors.push(selector); return query; },
+      selectAll: (selector) => { selectors.push(selector); return query; },
+      boundingClientRect: () => query,
+      scrollOffset: () => query,
+      exec: (callback) => {
+        const rowSelector = selectors[2];
+        const recipePosition = { scrollTop: 0, scrollHeight: 800 };
+        if (rowSelector === '.catalog-section') {
+          callback([viewports.recipe, recipePosition, sectionBoxes]);
+          return;
+        }
+        const category = rowSelector === '.home-category-sort-row';
+        const items = category ? page.categories : page.categories[Number(rowSelector.match(/#section-(\d+)/)[1])].recipes;
+        const rows = items.map(({ id }, index) => ({
+          dataset: { sortId: id },
+          ...(category ? { top: 112 + index * 75, bottom: 174 + index * 75 } : recipeBoxes[index]),
+        }));
+        const results = category
+          ? [viewports.category, { scrollTop: 0, scrollHeight: 320 }, rows]
+          : [viewports.recipe, recipePosition, rows, sectionBoxes[0]];
+        if (deferMeasure) queueMicrotask(() => callback(results));
+        else callback(results);
+      },
+    };
+    return query;
+  };
+
+  const requests = [];
+  const notices = [];
+  const respond = (request, statusCode = 200, data = null) => request.success({ statusCode, data: { code: statusCode === 200 ? 0 : statusCode, data } });
+  Object.assign(global.wx, {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    showToast: ({ title }) => notices.push(title),
+    request: (request) => requests.push(request),
+  });
+  const start = (kind, id, x, y, categoryId) => page.startHomeDrag({ kind, id, categoryId, point: { x, y } });
+  return { page, requests, notices, respond, start };
+}
+
+test('home touch handling lets regular taps and swipes pass and consumes an accepted long press', () => {
+  const state = {};
+  const calls = [];
+  const owner = { getState: () => state, callMethod: (name, input) => calls.push({ name, input }) };
+  const dataset = { kind: 'recipe', id: 'r1', categoryId: 'a', canDrag: true };
+  const handle = (name, clientX = 160, clientY = 180) => homeGestures[name]({
+    currentTarget: { dataset }, touches: [{ clientX, clientY }], changedTouches: [{ clientX, clientY }],
+  }, owner);
+  handle('start');
+  handle('end');
+  handle('tap');
+  assert.equal(calls.at(-1).name, 'tapHomeItem');
+
+  calls.length = 0;
+  handle('start');
+  assert.equal(handle('move', 125), undefined);
+  assert.equal(handle('hold', 125), undefined);
+  assert.deepEqual(calls, []);
+
+  handle('start');
+  assert.equal(handle('hold'), false);
+  assert.deepEqual(calls[0].input, { kind: 'recipe', id: 'r1', categoryId: 'a', point: { x: 160, y: 180 } });
+  assert.equal(handle('move', 160, 260), false);
+  assert.equal(handle('end', 160, 260), false);
+  assert.equal(handle('tap'), false);
+  assert.deepEqual(calls.map(({ name }) => name), ['startHomeDrag', 'moveHomeDrag', 'finishHomeDrag']);
+});
+
+test('homepage moves categories in both directions and keeps the selected category by ID', async () => {
+  const { page, requests, respond, start } = mockHomeOrder();
+  page.setData({ activeIndex: 1 });
+  start('category', 'a', 40, 142);
+  page.onCatalogScroll({ detail: { scrollTop: 0 } });
+  assert.equal(page.data.activeIndex, 1);
+  const first = page.finishHomeDrag({ x: 40, y: 296 });
+  await Promise.resolve();
+  assert.equal(page.data.homeOrderSaving, true);
+  assert.deepEqual(page.data.visibleCategories.map(({ id }) => id), ['b', 'c', 'a']);
+  assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'b');
+  assert.equal(page.data.homeRecipeScrollTop, 0);
+  assert.equal(requests[0].method, 'PUT');
+  assert.match(requests[0].url, /\/categories\/order\/batch$/);
+  assert.deepEqual(requests[0].data, { ids: ['b', 'c', 'a'], expectedIds: ['a', 'b', 'c'] });
+  start('category', 'b', 40, 142);
+  await page.refreshFromGesture();
+  assert.equal(page.homeDrag, null);
+  assert.equal(requests.length, 1);
+  respond(requests[0]);
+  await first;
+
+  start('category', 'a', 40, 292);
+  const second = page.finishHomeDrag({ x: 40, y: 132 });
+  await Promise.resolve();
+  assert.deepEqual(requests[1].data, { ids: ['a', 'b', 'c'], expectedIds: ['b', 'c', 'a'] });
+  respond(requests[1]);
+  await second;
+  assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'b');
+  assert.equal(page.data.homeRecipeScrollTop, 265);
+  assert.equal(page.data.homeOrderSaving, false);
+});
+
+test('homepage recipe drops use actual row heights and cancel outside the original category', async () => {
+  const { page, requests, respond, start } = mockHomeOrder({ deferMeasure: true });
+  start('recipe', 'r1', 155, 160, 'a');
+  await page.finishHomeDrag({ x: 155, y: 390 });
+  start('recipe', 'r1', 155, 160, 'a');
+  await page.finishHomeDrag({ x: 35, y: 280 });
+  start('recipe', 'r1', 155, 160, 'a');
+  await page.finishHomeDrag({ x: 155, y: 160 });
+  assert.equal(requests.length, 0);
+
+  page.setData({ query: 'r1' });
+  start('recipe', 'r1', 155, 160, 'a');
+  assert.equal(page.homeDrag, null);
+  page.clearSearch();
+  start('recipe', 'r1', 155, 160, 'a');
+  const save = page.finishHomeDrag({ x: 155, y: 242 });
+  await new Promise(setImmediate);
+  assert.match(requests[0].url, /\/categories\/a\/recipes\/order$/);
+  assert.deepEqual(requests[0].data, { ids: ['r2', 'r1', 'r3'], expectedIds: ['r1', 'r2', 'r3'] });
+  respond(requests[0]);
+  await save;
+  assert.deepEqual(page.categories[1].recipes.map(({ id }) => id), ['r4']);
+});
+
+test('homepage edge autoscroll stops at the end of the active recipe group', (t) => {
+  let tick;
+  t.mock.method(global, 'setInterval', (callback) => { tick = callback; });
+  t.mock.method(global, 'clearInterval', () => {});
+  const { page, requests, start } = mockHomeOrder({ recipeViewportBottom: 280 });
+  const scrolls = [];
+  const setData = page.setData;
+  page.setData = (patch, callback) => {
+    setData(patch, callback);
+    if (Number.isFinite(patch.homeRecipeScrollTop)) {
+      scrolls.push(patch.homeRecipeScrollTop);
+      page.onCatalogScroll({ detail: { scrollTop: patch.homeRecipeScrollTop } });
+    }
+  };
+  start('recipe', 'r1', 155, 160, 'a');
+  page.moveHomeDrag({ x: 155, y: 275 });
+  for (let index = 0; index < 25; index += 1) tick();
+  assert.equal(scrolls.at(-1), 72);
+  assert.equal(page.data.homeDropId, 'r3');
+  page.onHide();
+  assert.equal(page.homeDrag, null);
+  assert.equal(page.data.homeDragOffset, 0);
+  assert.equal(requests.length, 0);
+});
+
+test('homepage reverts a failed sort and uses the authoritative order after conflict or timeout', async () => {
+  for (const failure of ['conflict', 'timeout']) {
+    const { page, requests, respond, notices, start } = mockHomeOrder();
+    const previous = page.categories;
+    start('category', 'a', 40, 142);
+    const save = page.finishHomeDrag({ x: 40, y: 295 });
+    await Promise.resolve();
+    if (failure === 'conflict') respond(requests[0], 409);
+    else requests[0].fail({ errMsg: 'timeout' });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(page.categories, previous);
+    assert.equal(page.data.homeOrderSaving, true);
+    assert.equal(requests[1].method, 'GET');
+    respond(requests[1], 200, [previous[2], previous[0], previous[1]]);
+    await save;
+    assert.deepEqual(page.data.visibleCategories.map(({ id }) => id), ['c', 'a', 'b']);
+    assert.equal(page.data.homeOrderSaving, false);
+    assert.equal(notices.length, 1);
+  }
+});
 
 test('cart stores a stable checkout snapshot through retry and resets only after acceptance', () => {
   mockCartStorage();
@@ -246,7 +438,7 @@ test('recipe details add a serving to the shared cart and preserve the edit rout
   assert.deepEqual(routes, ['/packages/catalog/recipe/editor?recipeId=recipe%3Aone']);
 });
 
-function mockCardGeometry(page, footer = null, defer = false) {
+function mockCardGeometry(page) {
   page.createSelectorQuery = () => {
     const selectors = [];
     const query = {
@@ -254,15 +446,8 @@ function mockCardGeometry(page, footer = null, defer = false) {
       select: (selector) => { selectors.push(selector); return query; },
       boundingClientRect: () => query,
       exec: (callback) => {
-        const expected = ['.card-order-row', '.card-order-page'];
-        const results = [[{ top: 50 }, { top: 150 }], { height: 620 }];
-        if (footer) {
-          expected.push('.card-order-footer');
-          results.push(footer);
-        }
-        assert.deepEqual(selectors, expected);
-        if (defer) queueMicrotask(() => callback(results));
-        else callback(results);
+        assert.deepEqual(selectors, ['.card-order-row', '.card-order-page', '.card-order-footer']);
+        callback([[{ top: 50 }, { top: 150 }], { height: 620 }, { top: 558 }]);
       },
     };
     return query;
@@ -315,7 +500,7 @@ test('dragging a category card saves on release and restores the menu after a re
     },
   };
   const page = mockPage('../packages/catalog/category/manage');
-  mockCardGeometry(page, { top: 558 });
+  mockCardGeometry(page);
   await page.loadCategories();
   const gesture = mockCardGesture(page);
   const dragFirst = () => {
@@ -350,60 +535,6 @@ test('dragging a category card saves on release and restores the menu after a re
     assert.deepEqual(page.data.categories.map(({ id }) => id), ['b', 'c', 'a']);
     assert.equal(page.data.orderSaving, false);
     assert.equal(page.data.dragIndex, -1);
-  } finally {
-    page.onUnload();
-  }
-});
-
-test('recipe drops still save when touchend arrives before the row measurements', async () => {
-  const categories = [
-    { id: 'a', name: '热菜', recipes: [{ id: 'r1', name: '豆腐' }, { id: 'r2', name: '青菜' }] },
-    { id: 'b', name: '凉菜', recipes: [{ id: 'r3', name: '黄瓜' }] },
-  ];
-  const writes = [];
-  let reject = true;
-  global.wx = {
-    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
-    getWindowInfo: () => ({ windowHeight: 620 }),
-    showToast: () => {},
-    request: (request) => {
-      if (request.method === 'GET') {
-        request.success({ statusCode: 200, data: { code: 0, data: categories } });
-      } else {
-        writes.push(request);
-        if (reject) {
-          request.success({ statusCode: 409, data: { code: 409, message: '请重新加载' } });
-        } else {
-          request.success({ statusCode: 200, data: { code: 0, data: null } });
-        }
-      }
-    },
-  };
-  const page = mockPage('../packages/catalog/sort/index');
-  mockCardGeometry(page, null, true);
-  await page.onLoad({ categoryId: 'a' });
-  const gesture = mockCardGesture(page);
-  const dragFirst = () => {
-    gesture.start(70);
-    assert.equal(gesture.hold(), false);
-    assert.equal(gesture.move(120), false);
-  };
-  try {
-    dragFirst();
-    assert.equal(writes.length, 0);
-    assert.equal(page.data.dragStride, 0);
-    await gesture.end(170);
-    assert.equal(writes.length, 1);
-    assert.equal(writes[0].url, 'http://127.0.0.1:8080/api/categories/a/recipes/order');
-    assert.deepEqual(writes[0].data, { ids: ['r2', 'r1'], expectedIds: ['r1', 'r2'] });
-    assert.deepEqual(page.data.items.map(({ id }) => id), ['r1', 'r2']);
-
-    reject = false;
-    dragFirst();
-    await gesture.end(170);
-    assert.equal(writes.length, 2);
-    assert.deepEqual(page.data.items.map(({ id }) => id), ['r2', 'r1']);
-    assert.equal(page.data.orderSaving, false);
   } finally {
     page.onUnload();
   }

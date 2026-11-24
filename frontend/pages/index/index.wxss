@@ -118,7 +118,14 @@ button.category-button--active { background: var(--brand-light); color: var(--br
 .section-title__count { flex: none; padding: 4rpx 14rpx; border-radius: 20rpx; background: var(--soft); color: var(--muted); font-size: 22rpx; }
 .section-empty { padding: 24rpx; border-radius: 18rpx; background: var(--soft); color: var(--muted); font-size: 24rpx; }
 
-.swipe-wrapper { display: block; overflow: hidden; margin-bottom: 12rpx; border-radius: var(--panel-radius); }
+.home-recipe-sort-row { position: relative; padding-bottom: 12rpx; }
+.swipe-wrapper { display: block; overflow: hidden; border-radius: var(--panel-radius); }
+.home-sort-row--dragging { z-index: 2; }
+button.category-button.home-sort-row--dragging { background: var(--brand-light); box-shadow: 0 3rpx 12rpx var(--shadow); }
+.home-sort-row--dragging .swipe-wrapper { box-shadow: 0 3rpx 12rpx var(--shadow); }
+.home-drop-line { position: absolute; z-index: 3; top: 0; right: 8rpx; left: 8rpx; height: 3rpx; border-radius: 3rpx; background: var(--brand); pointer-events: none; }
+.home-drop-line--after { top: auto; bottom: 0; }
+.home-recipe-sort-row > .home-drop-line--after { bottom: 4rpx; }
 button.recipe-delete {
   display: flex;
   align-items: center;

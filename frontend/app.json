@@ -11,8 +11,7 @@
       "pages": [
         "recipe/detail",
         "recipe/editor",
-        "category/manage",
-        "sort/index"
+        "category/manage"
       ]
     }
   ],

@@ -6,12 +6,12 @@
     <button class="quiet" bindtap="loadCategories">重试</button>
   </view>
   <view wx:if="{{categories.length}}" class="category-list">
-    <text wx:if="{{categories.length > 1}}" class="category-drag-hint">{{orderSaving ? '正在保存顺序…' : '点按查看菜谱，长按拖动分类'}}</text>
+    <text wx:if="{{categories.length > 1}}" class="category-drag-hint">{{orderSaving ? '正在保存顺序…' : '长按拖动分类'}}</text>
     <view wx:for="{{categories}}" wx:key="id" class="category-row panel card-order-row {{dragIndex === index ? 'category-row--dragging' : ''}}"
       style="transform: translateY({{layout.offset(index, dragIndex, dragTarget, dragOffset, dragStride)}}px)">
-      <navigator class="category-row__surface" url="/packages/catalog/sort/index?categoryId={{item.sortId}}" hover-class="none"
+      <view class="category-row__surface"
         data-index="{{index}}" data-can-drag="{{categories.length > 1 && !orderSaving && !saving && !deletingId && !sheetOpen}}"
-        aria-label="查看{{item.name}}的菜谱" bindtouchstart="{{layout.touchStart}}" bindlongpress="{{layout.holdCard}}"
+        bindtouchstart="{{layout.touchStart}}" bindlongpress="{{layout.holdCard}}"
         bindtouchmove="{{layout.moveCard}}" bindtouchend="{{layout.touchEnd}}" bindtouchcancel="{{layout.touchCancel}}">
         <view class="category-row__image image-placeholder">
           <t-icon name="image" size="38rpx" aria-hidden="true" />
@@ -21,7 +21,7 @@
           <text class="category-row__name">{{item.name}}</text>
           <text class="category-row__count">{{item.recipeCount}} 道菜谱</text>
         </view>
-      </navigator>
+      </view>
       <view class="category-row__actions">
         <button class="quiet category-row__action" catchtap="startEdit" data-id="{{item.id}}" aria-label="编辑{{item.name}}"
           disabled="{{dragIndex >= 0 || orderSaving || !!deletingId}}">
