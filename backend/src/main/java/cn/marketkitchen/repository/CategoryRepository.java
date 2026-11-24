@@ -4,9 +4,11 @@ import cn.marketkitchen.domain.Category;
 import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.mapper.CategoryMapper;
 import cn.marketkitchen.mapper.RecipeMapper;
+import cn.marketkitchen.mapper.model.CategoryPosition;
 import cn.marketkitchen.mapper.model.CategoryRow;
 import cn.marketkitchen.mapper.model.RecipeRow;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 
@@ -43,6 +45,41 @@ public class CategoryRepository {
 
     public boolean lockCategory(String id) {
         return categories.lockId(id) != null;
+    }
+
+    public List<CategoryPosition> lockCategoryPositions() {
+        return categories.lockPositions();
+    }
+
+    public void updateCategoryOrder(List<CategoryPosition> current, List<String> orderedIds) {
+        var occupied = new HashSet<Long>();
+        current.forEach(position -> occupied.add(position.sortOrder()));
+        long temporary = Long.MIN_VALUE;
+        // Vacate the changed positions before reassigning the unique sort_order values.
+        // Negative temporary values leave the AUTO_INCREMENT position for new categories alone.
+        for (int i = 0; i < current.size(); i++) {
+            var position = current.get(i);
+            if (!position.id().equals(orderedIds.get(i))) {
+                while (occupied.contains(temporary)) temporary++;
+                categories.updatePosition(position.id(), temporary++);
+            }
+        }
+        for (int i = 0; i < current.size(); i++) {
+            var position = current.get(i);
+            if (!position.id().equals(orderedIds.get(i))) {
+                categories.updatePosition(orderedIds.get(i), position.sortOrder());
+            }
+        }
+    }
+
+    public List<String> lockRecipeOrder(String categoryId) {
+        return recipes.lockOrderedIds(categoryId);
+    }
+
+    public void updateRecipeOrder(String categoryId, List<String> orderedIds) {
+        for (int i = 0; i < orderedIds.size(); i++) {
+            recipes.updatePosition(categoryId, orderedIds.get(i), i + 1L);
+        }
     }
 
     public Recipe findRecipe(String id) {

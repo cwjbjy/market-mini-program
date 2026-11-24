@@ -1,0 +1,10 @@
+.sort-header { margin-bottom: 18rpx; }
+.sort-title { display: block; font-size: 34rpx; font-weight: 700; overflow-wrap: anywhere; }
+.sort-hint { display: block; margin-top: 6rpx; color: var(--muted); font-size: 24rpx; }
+.sort-warning { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; padding: 0 8rpx 0 18rpx; background: var(--accent-light); color: var(--accent); }
+.sort-row { position: relative; height: 124rpx; margin-bottom: 14rpx; }
+.sort-card { display: flex; align-items: center; height: 100%; padding: 0 22rpx; pointer-events: none; }
+.sort-row--dragging { z-index: 1; }
+.sort-row--dragging .sort-card { background: var(--brand-light); box-shadow: 0 4rpx 16rpx var(--shadow); }
+.sort-image { flex: none; width: 82rpx; height: 82rpx; margin-right: 18rpx; border-radius: 14rpx; }
+.sort-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

@@ -1,9 +1,20 @@
 const api = require('../../../lib/api');
 const { confirm, toast, showError, errorMessage } = require('../../../lib/ui');
 const { chooseImage, previewImage } = require('../../../lib/images');
+const { createCardOrder, dragState } = require('../sort/card-order');
+
+const order = createCardOrder({
+  list: 'categories',
+  hasFooter: true,
+  save: api.reorderCategories,
+  reload: (page) => page.loadCategories(),
+  blocked: ({ data }) => data.saving || data.deletingId || data.sheetOpen,
+});
 
 Page({
+  ...order.lifecycle,
   data: {
+    ...dragState,
     categories: [],
     loading: true,
     loadError: '',
@@ -21,15 +32,8 @@ Page({
     this.loadCategories();
   },
 
-  async onPullDownRefresh() {
-    try {
-      await this.loadCategories();
-    } finally {
-      wx.stopPullDownRefresh();
-    }
-  },
-
   loadCategories() {
+    if (this.cardDrag || this.data.orderSaving) return;
     if (!this.fetching) {
       this.fetching = this.fetchCategories().finally(() => {
         this.fetching = null;
@@ -49,6 +53,7 @@ Page({
           image,
           imageUrl: api.mediaUrl(image),
           recipeCount: recipes.length,
+          sortId: encodeURIComponent(id),
         })),
         loadError: '',
       });
@@ -59,6 +64,22 @@ Page({
 
   startCreate() {
     this.openEditor();
+  },
+
+  startCardDrag(point) {
+    order.start(this, point);
+  },
+
+  moveCardDrag(point) {
+    order.move(this, point);
+  },
+
+  finishCardDrag(point) {
+    return order.finish(this, point);
+  },
+
+  cancelCardDrag() {
+    order.cancel(this);
   },
 
   startEdit(event) {

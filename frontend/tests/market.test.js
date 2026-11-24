@@ -3,6 +3,7 @@ const test = require('node:test');
 const api = require('../lib/api');
 const cart = require('../lib/cart');
 const { filterCategories } = require('../lib/search');
+const cardGestures = require('../packages/catalog/sort/layout.wxs');
 
 test('search retains all categories for whitespace and matches partial names or one edit', () => {
   const categories = [
@@ -243,4 +244,167 @@ test('recipe details add a serving to the shared cart and preserve the edit rout
 
   detail.editRecipe();
   assert.deepEqual(routes, ['/packages/catalog/recipe/editor?recipeId=recipe%3Aone']);
+});
+
+function mockCardGeometry(page, footer = null, defer = false) {
+  page.createSelectorQuery = () => {
+    const selectors = [];
+    const query = {
+      selectAll: (selector) => { selectors.push(selector); return query; },
+      select: (selector) => { selectors.push(selector); return query; },
+      boundingClientRect: () => query,
+      exec: (callback) => {
+        const expected = ['.card-order-row', '.card-order-page'];
+        const results = [[{ top: 50 }, { top: 150 }], { height: 620 }];
+        if (footer) {
+          expected.push('.card-order-footer');
+          results.push(footer);
+        }
+        assert.deepEqual(selectors, expected);
+        if (defer) queueMicrotask(() => callback(results));
+        else callback(results);
+      },
+    };
+    return query;
+  };
+}
+
+function mockCardGesture(page) {
+  const state = {};
+  let result;
+  const owner = {
+    getState: () => state,
+    callMethod: (name, data) => { result = page[name](data); },
+  };
+  const currentTarget = { dataset: { index: '0', canDrag: true } };
+  const point = (clientY) => [{ clientY }];
+  return {
+    start(y) { cardGestures.touchStart({ currentTarget, touches: point(y) }, owner); },
+    hold() { return cardGestures.holdCard({ currentTarget }, owner); },
+    move(y) { return cardGestures.moveCard({ currentTarget, touches: point(y) }, owner); },
+    cancel() { cardGestures.touchCancel({ currentTarget }, owner); },
+    async end(y) {
+      const handled = cardGestures.touchEnd({ currentTarget, changedTouches: point(y) }, owner);
+      if (handled === false) await result;
+      return handled;
+    },
+  };
+}
+
+test('dragging a category card saves on release and restores the menu after a rejected save', async () => {
+  let categories = ['a', 'b', 'c'].map((id) => ({ id, name: id, recipes: [] }));
+  const writes = [];
+  let reject = false;
+  global.wx = {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    getWindowInfo: () => ({ windowHeight: 620 }),
+    showToast: () => {},
+    request: (request) => {
+      if (request.method === 'GET') {
+        request.success({ statusCode: 200, data: { code: 0, data: categories } });
+      } else {
+        writes.push(request.data);
+        if (reject) {
+          request.success({ statusCode: 409, data: { code: 409, message: '顺序已变化' } });
+          return;
+        }
+        const byId = new Map(categories.map((category) => [category.id, category]));
+        categories = request.data.ids.map((id) => byId.get(id));
+        request.success({ statusCode: 200, data: { code: 0, data: null } });
+      }
+    },
+  };
+  const page = mockPage('../packages/catalog/category/manage');
+  mockCardGeometry(page, { top: 558 });
+  await page.loadCategories();
+  const gesture = mockCardGesture(page);
+  const dragFirst = () => {
+    gesture.start('70');
+    assert.equal(gesture.hold(), false);
+    assert.equal(gesture.move(270), false);
+  };
+
+  try {
+    gesture.start(70);
+    assert.equal(gesture.move(270), undefined);
+    assert.equal(await gesture.end(270), undefined);
+    assert.equal(page.data.dragIndex, -1);
+    assert.equal(writes.length, 0);
+
+    dragFirst();
+    assert.equal(page.data.dragTarget, 2);
+    assert.equal(writes.length, 0);
+    gesture.cancel();
+    await gesture.end(270);
+    assert.equal(writes.length, 0);
+
+    dragFirst();
+    await gesture.end(270);
+    assert.deepEqual(writes[0], { ids: ['b', 'c', 'a'], expectedIds: ['a', 'b', 'c'] });
+    assert.deepEqual(page.data.categories.map(({ id }) => id), ['b', 'c', 'a']);
+
+    reject = true;
+    dragFirst();
+    await gesture.end(270);
+    assert.equal(writes.length, 2);
+    assert.deepEqual(page.data.categories.map(({ id }) => id), ['b', 'c', 'a']);
+    assert.equal(page.data.orderSaving, false);
+    assert.equal(page.data.dragIndex, -1);
+  } finally {
+    page.onUnload();
+  }
+});
+
+test('recipe drops still save when touchend arrives before the row measurements', async () => {
+  const categories = [
+    { id: 'a', name: '热菜', recipes: [{ id: 'r1', name: '豆腐' }, { id: 'r2', name: '青菜' }] },
+    { id: 'b', name: '凉菜', recipes: [{ id: 'r3', name: '黄瓜' }] },
+  ];
+  const writes = [];
+  let reject = true;
+  global.wx = {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    getWindowInfo: () => ({ windowHeight: 620 }),
+    showToast: () => {},
+    request: (request) => {
+      if (request.method === 'GET') {
+        request.success({ statusCode: 200, data: { code: 0, data: categories } });
+      } else {
+        writes.push(request);
+        if (reject) {
+          request.success({ statusCode: 409, data: { code: 409, message: '请重新加载' } });
+        } else {
+          request.success({ statusCode: 200, data: { code: 0, data: null } });
+        }
+      }
+    },
+  };
+  const page = mockPage('../packages/catalog/sort/index');
+  mockCardGeometry(page, null, true);
+  await page.onLoad({ categoryId: 'a' });
+  const gesture = mockCardGesture(page);
+  const dragFirst = () => {
+    gesture.start(70);
+    assert.equal(gesture.hold(), false);
+    assert.equal(gesture.move(120), false);
+  };
+  try {
+    dragFirst();
+    assert.equal(writes.length, 0);
+    assert.equal(page.data.dragStride, 0);
+    await gesture.end(170);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].url, 'http://127.0.0.1:8080/api/categories/a/recipes/order');
+    assert.deepEqual(writes[0].data, { ids: ['r2', 'r1'], expectedIds: ['r1', 'r2'] });
+    assert.deepEqual(page.data.items.map(({ id }) => id), ['r1', 'r2']);
+
+    reject = false;
+    dragFirst();
+    await gesture.end(170);
+    assert.equal(writes.length, 2);
+    assert.deepEqual(page.data.items.map(({ id }) => id), ['r2', 'r1']);
+    assert.equal(page.data.orderSaving, false);
+  } finally {
+    page.onUnload();
+  }
 });

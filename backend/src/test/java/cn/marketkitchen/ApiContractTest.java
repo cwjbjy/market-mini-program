@@ -2,11 +2,13 @@ package cn.marketkitchen;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -18,6 +20,7 @@ import cn.marketkitchen.controller.OrderController;
 import cn.marketkitchen.controller.RecipeController;
 import cn.marketkitchen.domain.Category;
 import cn.marketkitchen.domain.Recipe;
+import cn.marketkitchen.dto.CatalogDtos.SortOrder;
 import cn.marketkitchen.exception.BusinessException;
 import cn.marketkitchen.image.LocalImageStorage;
 import cn.marketkitchen.service.CategoryService;
@@ -63,6 +66,25 @@ class ApiContractTest {
                 .andExpect(jsonPath("$.data[0].recipes[0].categoryId").value("c1"))
                 .andExpect(jsonPath("$.data[0].recipes[0].ingredients").value("土豆"))
                 .andExpect(jsonPath("$.data[0].recipes[0].orderCount").value(4));
+    }
+
+    @Test
+    void routesSortRequestsAndRequiresTheOriginalOrder() throws Exception {
+        String body = """
+                {"ids":["second","first"],"expectedIds":["first","second"]}
+                """;
+        var order = new SortOrder(List.of("second", "first"), List.of("first", "second"));
+        mvc.perform(put("/api/categories/order/batch").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+        verify(categoryService).reorderCategories(order);
+
+        mvc.perform(put("/api/categories/c1/recipes/order").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+        verify(categoryService).reorderRecipes("c1", order);
+
+        mvc.perform(put("/api/categories/order/batch").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[\"second\",\"first\"]}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("请提供调整前的顺序"));
     }
 
     @Test

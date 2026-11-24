@@ -1,6 +1,6 @@
 {
   "navigationBarTitleText": "分类管理",
-  "enablePullDownRefresh": true,
+  "enablePullDownRefresh": false,
   "usingComponents": {
     "t-popup": "tdesign-miniprogram/popup/popup"
   }

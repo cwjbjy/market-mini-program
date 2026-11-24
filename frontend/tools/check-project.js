@@ -135,6 +135,9 @@ for (const page of pages) {
   contents(page + '.wxss');
   for (const [, component] of markup.matchAll(/<(t-[a-z-]+)\b/g)) assert.ok(registered.has(component), page + ' ' + component);
   for (const [, asset] of markup.matchAll(/src="\/(static\/[^"]+)"/g)) assert.ok(fs.existsSync(path.join(root, asset)), asset);
+  for (const [, route] of markup.matchAll(/<navigator\b[^>]*\burl="\/([^?"\s]+)/g)) {
+    assert.ok(pages.has(route), page + ' references an unregistered page: ' + route);
+  }
   for (const [, handler] of markup.matchAll(/\b(?:bind|catch):?[a-z-]+="([A-Za-z]+)"/g)) {
     assert.ok(new RegExp('\\b' + handler + '\\(').test(script), page + ' ' + handler);
   }

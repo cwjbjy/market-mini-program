@@ -4,9 +4,12 @@ import cn.marketkitchen.domain.Category;
 import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.dto.CatalogDtos.SaveCategory;
 import cn.marketkitchen.dto.CatalogDtos.SaveRecipe;
+import cn.marketkitchen.dto.CatalogDtos.SortOrder;
 import cn.marketkitchen.exception.BusinessException;
 import cn.marketkitchen.image.ImageReference;
+import cn.marketkitchen.mapper.model.CategoryPosition;
 import cn.marketkitchen.repository.CategoryRepository;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -52,6 +55,38 @@ public class CategoryService {
         if (!categoryRepository.deleteCategory(id)) {
             throw BusinessException.notFound("分类不存在");
         }
+    }
+
+    public void reorderCategories(SortOrder order) {
+        transactions.executeWithoutResult(status -> {
+            var positions = categoryRepository.lockCategoryPositions();
+            var current = positions.stream().map(CategoryPosition::id).toList();
+            if (needsReorder(order, current)) categoryRepository.updateCategoryOrder(positions, order.ids());
+        });
+    }
+
+    public void reorderRecipes(String categoryId, SortOrder order) {
+        transactions.executeWithoutResult(status -> {
+            if (!categoryRepository.lockCategory(categoryId)) {
+                throw BusinessException.notFound("分类不存在");
+            }
+            var current = categoryRepository.lockRecipeOrder(categoryId);
+            if (needsReorder(order, current)) categoryRepository.updateRecipeOrder(categoryId, order.ids());
+        });
+    }
+
+    private static boolean needsReorder(SortOrder order, List<String> current) {
+        var requestedIds = new HashSet<>(order.ids());
+        if (requestedIds.size() != order.ids().size() || requestedIds.size() != order.expectedIds().size()
+                || !requestedIds.equals(new HashSet<>(order.expectedIds()))) {
+            throw BusinessException.badRequest("排序前后的项目必须一致，且不能重复");
+        }
+        // Retrying a save that already took effect should succeed even if its original order is stale.
+        if (current.equals(order.ids())) return false;
+        if (!current.equals(order.expectedIds())) {
+            throw BusinessException.conflict("菜单顺序或内容已变化，请重新加载后再调整");
+        }
+        return true;
     }
 
     public Recipe recipe(String id) {

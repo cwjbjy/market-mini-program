@@ -19,7 +19,7 @@
 | `frontend/` 下的目录 | 用途 |
 | --- | --- |
 | `pages/` 和 `custom-tab-bar/` | 主包中的首页、订单、账号和底部导航 |
-| `packages/catalog/` | 菜单分包。`recipe/` 放菜谱详情与新建、编辑共用的表单，`category/` 放分类管理 |
+| `packages/catalog/` | 菜单分包。`recipe/` 放菜谱详情和表单，`category/` 放分类管理，`sort/` 放菜谱排序页和共用的拖动逻辑 |
 | `vegetable/` | 旧版菜谱和分类路径的跳转入口 |
 | `lib/` 和 `static/` | 主包共享的 API、购物车逻辑和静态素材 |
 | `tests/` 和 `tools/` | 本地测试与检查脚本，由微信打包配置排除 |
@@ -110,6 +110,8 @@ JSON 响应包含 `code`、`message`、`data`。成功的 `code` 为 0，失败�
 | --- | --- |
 | `GET /api/categories` | 读取分类及其菜谱 |
 | `POST /api/categories`、`PUT /api/categories/{id}`、`DELETE /api/categories/{id}` | 管理分类 |
+| `PUT /api/categories/order/batch` | 保存大分类顺序 |
+| `PUT /api/categories/{id}/recipes/order` | 保存该分类内的菜谱顺序 |
 | `GET /api/recipes/{id}` | 读取菜谱详情 |
 | `POST /api/recipes`、`PUT /api/recipes/{id}`、`DELETE /api/recipes/{id}` | 管理菜谱，更新时可改变分类 |
 | `POST /api/images` | 上传 multipart 字段 `file`，返回 `{path}` |
@@ -117,6 +119,8 @@ JSON 响应包含 `code`、`message`、`data`。成功的 `code` 为 0，失败�
 | `POST /api/orders` | 提交 `{requestId,items:[{recipeId,quantity}]}` |
 
 订单保存下单时的菜名、配料、做法、图片和数量。同一次提交在超时重试时复用 `requestId`，每种菜谱只累计一次点单次数。删除菜谱、分类或换图后，历史订单仍使用原来的图片。
+
+排序接口接收 `{ids, expectedIds}`，分别表示调整后的 ID 顺序与调整前的 ID 顺序。在分类管理页点按分类卡片会打开该分类的菜谱列表。在这两个页面都可以长按卡片拖动，松手后自动保存。保存沿用 MySQL 已有的 `sort_order` 字段。已使用当前表结构的部署可直接更新后端和小程序并沿用现有数据卷，无需重新导入数据。
 
 ## 验证
 

@@ -1,0 +1,56 @@
+function offset(index, from, to, distance, height) {
+  if (index === from) return distance;
+  if (index > from && index <= to && from >= 0) return -height;
+  if (index < from && index >= to) return height;
+  return 0;
+}
+
+function touchY(touches) {
+  var touch = touches && touches[0];
+  if (touch) return touch.clientY;
+}
+
+function touchStart(event, owner) {
+  owner.getState().cardPress = { index: event.currentTarget.dataset.index, y: touchY(event.touches), active: false };
+}
+
+function holdCard(event, owner) {
+  var dataset = event.currentTarget.dataset;
+  var press = owner.getState().cardPress;
+  if (!dataset.canDrag || !press || press.index !== dataset.index || press.active) return;
+  press.active = true;
+  owner.callMethod('startCardDrag', { index: press.index, y: press.y });
+  return false;
+}
+
+function moveCard(event, owner) {
+  var press = owner.getState().cardPress;
+  if (!press || !press.active || press.index !== event.currentTarget.dataset.index) return;
+  owner.callMethod('moveCardDrag', { y: touchY(event.touches) });
+  return false;
+}
+
+function touchEnd(event, owner) {
+  var state = owner.getState();
+  var press = state.cardPress;
+  state.cardPress = null;
+  if (!press || !press.active) return;
+  owner.callMethod('finishCardDrag', { y: touchY(event.changedTouches) });
+  return false;
+}
+
+function touchCancel(event, owner) {
+  var state = owner.getState();
+  var press = state.cardPress;
+  state.cardPress = null;
+  if (press && press.active) owner.callMethod('cancelCardDrag');
+}
+
+module.exports = {
+  offset: offset,
+  touchStart: touchStart,
+  holdCard: holdCard,
+  moveCard: moveCard,
+  touchEnd: touchEnd,
+  touchCancel: touchCancel
+};

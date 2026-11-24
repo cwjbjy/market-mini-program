@@ -2,6 +2,7 @@ package cn.marketkitchen.controller;
 
 import cn.marketkitchen.domain.Category;
 import cn.marketkitchen.dto.CatalogDtos.SaveCategory;
+import cn.marketkitchen.dto.CatalogDtos.SortOrder;
 import cn.marketkitchen.service.CategoryService;
 import cn.marketkitchen.web.ApiResponse;
 import jakarta.validation.Valid;
@@ -35,6 +36,18 @@ public class CategoryController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<Category> create(@Valid @RequestBody SaveCategory input) {
         return ApiResponse.success(categoryService.createCategory(input));
+    }
+
+    @PutMapping("/order/batch")
+    public ApiResponse<Void> reorder(@Valid @RequestBody SortOrder input) {
+        categoryService.reorderCategories(input);
+        return ApiResponse.success(null);
+    }
+
+    @PutMapping("/{id}/recipes/order")
+    public ApiResponse<Void> reorderRecipes(@PathVariable String id, @Valid @RequestBody SortOrder input) {
+        categoryService.reorderRecipes(id, input);
+        return ApiResponse.success(null);
     }
 
     @PutMapping("/{id}")

@@ -1,10 +1,16 @@
 package cn.marketkitchen.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 
 public final class CatalogDtos {
     private CatalogDtos() {}
+
+    public record SortOrder(
+            @NotNull(message = "请提供调整后的顺序") List<@NotBlank @Size(max = 200) String> ids,
+            @NotNull(message = "请提供调整前的顺序") List<@NotBlank @Size(max = 200) String> expectedIds) {}
 
     public record SaveCategory(
             @NotBlank(message = "请填写分类名称") @Size(max = 80, message = "分类名称不能超过 80 个字符") String name,

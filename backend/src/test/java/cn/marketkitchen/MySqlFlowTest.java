@@ -3,9 +3,12 @@ package cn.marketkitchen;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cn.marketkitchen.domain.Category;
 import cn.marketkitchen.domain.Order;
+import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.dto.CatalogDtos.SaveCategory;
 import cn.marketkitchen.dto.CatalogDtos.SaveRecipe;
+import cn.marketkitchen.dto.CatalogDtos.SortOrder;
 import cn.marketkitchen.dto.OrderDtos.SubmitItem;
 import cn.marketkitchen.dto.OrderDtos.SubmitOrder;
 import cn.marketkitchen.exception.BusinessException;
@@ -104,6 +107,50 @@ class MySqlFlowTest {
         assertThat(categoryService.recipe(id)).isEqualTo(moved);
         categoryService.deleteRecipe(id);
         assertThatThrownBy(() -> categoryService.recipe(id)).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void reordersExistingCategoriesAndStillAppendsNewOnes() {
+        var first = categoryService.createCategory(new SaveCategory("热菜", IMAGE));
+        var second = categoryService.createCategory(new SaveCategory("凉菜", IMAGE));
+        var third = categoryService.createCategory(new SaveCategory("甜点", IMAGE));
+        var original = List.of(first.id(), second.id(), third.id());
+        var reordered = List.of(third.id(), first.id(), second.id());
+
+        var order = new SortOrder(reordered, original);
+        categoryService.reorderCategories(order);
+        categoryService.reorderCategories(order);
+        assertThat(categoryService.categories()).containsExactly(third, first, second);
+        assertThatThrownBy(() -> categoryService.reorderCategories(new SortOrder(original, original)))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT));
+
+        var added = categoryService.createCategory(new SaveCategory("主食", IMAGE));
+        assertThat(categoryService.categories()).extracting(Category::id)
+                .containsExactly(third.id(), first.id(), second.id(), added.id());
+    }
+
+    @Test
+    void reordersRecipesOnlyWithinTheSelectedCategory() {
+        var firstCategory = categoryService.createCategory(new SaveCategory("热菜", IMAGE));
+        var secondCategory = categoryService.createCategory(new SaveCategory("凉菜", IMAGE));
+        var first = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "豆腐", IMAGE, "豆腐", "煎"));
+        var second = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "青菜", IMAGE, "青菜", "炒"));
+        var other = categoryService.createRecipe(new SaveRecipe(secondCategory.id(), "黄瓜", IMAGE, "黄瓜", "凉拌"));
+        var original = List.of(first.id(), second.id());
+
+        assertThatThrownBy(() -> categoryService.reorderRecipes(firstCategory.id(), new SortOrder(
+                List.of(other.id(), first.id()), List.of(first.id(), other.id()))))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT));
+        assertThatThrownBy(() -> categoryService.reorderRecipes(firstCategory.id(), new SortOrder(
+                List.of(second.id(), second.id()), original)))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThat(categoryService.categories().get(0).recipes()).containsExactly(first, second);
+
+        categoryService.reorderRecipes(firstCategory.id(), new SortOrder(List.of(second.id(), first.id()), original));
+        var added = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "蘑菇", IMAGE, "蘑菇", "炒"));
+        var menu = categoryService.categories();
+        assertThat(menu.get(0).recipes()).extracting(Recipe::id).containsExactly(second.id(), first.id(), added.id());
+        assertThat(menu.get(1).recipes()).containsExactly(other);
     }
 
     @Test
