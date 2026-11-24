@@ -176,14 +176,14 @@ async function finish(page, point) {
   ));
 
   try {
-    page.renderCatalog(false, true, categoryOrder);
+    page.renderCatalog(false, true, { alignCategory: categoryOrder, selectedCategoryId: categoryOrder ? item.id : undefined });
     if (categoryOrder) await api.reorderCategories(order);
     else await api.reorderRecipes(drag.categoryId, order);
     if (!page.unloaded && !page.homeHidden) toast('顺序已保存', 'success');
   } catch (error) {
     if (page.unloaded) return;
     page.categories = previous;
-    page.renderCatalog(false, true, categoryOrder);
+    page.renderCatalog(false, true, { alignCategory: categoryOrder });
     if (!page.homeHidden) showError(error, '保存顺序失败');
     await page.fetchCatalog(categoryOrder);
   } finally {

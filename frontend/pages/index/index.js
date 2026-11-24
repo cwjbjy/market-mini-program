@@ -87,7 +87,7 @@ Page({
       this.categories = categories;
       this.catalogLoaded = true;
       this.setData({ loadError: '' });
-      this.renderCatalog(false, true, alignCategory);
+      this.renderCatalog(false, true, { alignCategory });
     } catch (error) {
       if (!this.unloaded) this.setData({ loadError: errorMessage(error, '无法加载菜单') });
     }
@@ -99,7 +99,7 @@ Page({
     return this.refreshCatalog();
   },
 
-  renderCatalog(resetIndex = false, measure = false, alignCategory = false) {
+  renderCatalog(resetIndex = false, measure = false, { alignCategory = false, selectedCategoryId } = {}) {
     const { items, pending } = cart.read();
     const quantities = new Map(items.map((item) => [item.recipeId, item.quantity]));
     const recipeIndex = new Map();
@@ -121,10 +121,10 @@ Page({
         unavailable: Boolean(this.catalogLoaded),
       });
     const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    const previous = this.data.visibleCategories[this.data.activeIndex];
-    const previousIndex = previous ? visibleCategories.findIndex((category) => category.id === previous.id) : 0;
-    const activeIndex = resetIndex ? 0 : Math.max(0, previousIndex);
-    const resetPosition = resetIndex || previousIndex < 0 || alignCategory || (measure && this.catalogJump);
+    const selectedId = selectedCategoryId ?? this.data.visibleCategories[this.data.activeIndex]?.id;
+    const selectedIndex = selectedId === undefined ? 0 : visibleCategories.findIndex((category) => category.id === selectedId);
+    const activeIndex = resetIndex ? 0 : Math.max(0, selectedIndex);
+    const resetPosition = resetIndex || selectedIndex < 0 || alignCategory || (measure && this.catalogJump);
     const jump = resetPosition && visibleCategories.length ? { index: activeIndex } : null;
     if (resetPosition) this.catalogJump = jump;
     if (measure) {

@@ -141,9 +141,11 @@ test('home touch handling lets regular taps and swipes pass and consumes an acce
   assert.deepEqual(calls.map(({ name }) => name), ['startHomeDrag', 'moveHomeDrag', 'finishHomeDrag']);
 });
 
-test('homepage moves categories in both directions and keeps the selected category by ID', async () => {
+test('homepage selects the moved category and scrolls to its new position in both directions', async () => {
   const { page, requests, respond, start } = mockHomeOrder();
-  page.setData({ activeIndex: 1 });
+  page.tapHomeItem({ kind: 'category', id: 'b' });
+  assert.equal(page.data.homeRecipeScrollTop, 265);
+  page.onCatalogScroll({ detail: { scrollTop: 265, scrollHeight: 800 } });
   start('category', 'a', 40, 142);
   page.onCatalogScroll({ detail: { scrollTop: 0 } });
   assert.equal(page.data.activeIndex, 1);
@@ -151,8 +153,11 @@ test('homepage moves categories in both directions and keeps the selected catego
   await Promise.resolve();
   assert.equal(page.data.homeOrderSaving, true);
   assert.deepEqual(page.data.visibleCategories.map(({ id }) => id), ['b', 'c', 'a']);
-  assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'b');
-  assert.equal(page.data.homeRecipeScrollTop, 0);
+  assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'a');
+  assert.equal(page.data.categoryAnchor, 'category-2');
+  assert.equal(page.data.homeRecipeScrollTop, 410);
+  page.onCatalogScroll({ detail: { scrollTop: 410, scrollHeight: 800 } });
+  assert.equal(page.data.activeIndex, 2);
   assert.equal(requests[0].method, 'PUT');
   assert.match(requests[0].url, /\/categories\/order\/batch$/);
   assert.deepEqual(requests[0].data, { ids: ['b', 'c', 'a'], expectedIds: ['a', 'b', 'c'] });
@@ -169,8 +174,8 @@ test('homepage moves categories in both directions and keeps the selected catego
   assert.deepEqual(requests[1].data, { ids: ['a', 'b', 'c'], expectedIds: ['b', 'c', 'a'] });
   respond(requests[1]);
   await second;
-  assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'b');
-  assert.equal(page.data.homeRecipeScrollTop, 265);
+  assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'a');
+  assert.equal(page.data.homeRecipeScrollTop, 0);
   assert.equal(page.data.homeOrderSaving, false);
 });
 
@@ -227,6 +232,7 @@ test('homepage reverts a failed sort and uses the authoritative order after conf
   for (const failure of ['conflict', 'timeout']) {
     const { page, requests, respond, notices, start } = mockHomeOrder();
     const previous = page.categories;
+    page.tapHomeItem({ kind: 'category', id: 'b' });
     start('category', 'a', 40, 142);
     const save = page.finishHomeDrag({ x: 40, y: 295 });
     await Promise.resolve();
@@ -235,11 +241,15 @@ test('homepage reverts a failed sort and uses the authoritative order after conf
     await Promise.resolve();
     await Promise.resolve();
     assert.equal(page.categories, previous);
+    assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'a');
+    assert.equal(page.data.homeRecipeScrollTop, 0);
     assert.equal(page.data.homeOrderSaving, true);
     assert.equal(requests[1].method, 'GET');
     respond(requests[1], 200, [previous[2], previous[0], previous[1]]);
     await save;
     assert.deepEqual(page.data.visibleCategories.map(({ id }) => id), ['c', 'a', 'b']);
+    assert.equal(page.data.visibleCategories[page.data.activeIndex].id, 'a');
+    assert.equal(page.data.homeRecipeScrollTop, 265);
     assert.equal(page.data.homeOrderSaving, false);
     assert.equal(notices.length, 1);
   }
