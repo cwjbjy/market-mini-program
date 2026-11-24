@@ -13,20 +13,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Manages categories and the recipes they contain. */
 @Service
+@RequiredArgsConstructor
 public class CategoryService {
     private final CategoryRepository categoryRepository;
     private final TransactionTemplate transactions;
-
-    public CategoryService(CategoryRepository categoryRepository, TransactionTemplate transactions) {
-        this.categoryRepository = categoryRepository;
-        this.transactions = transactions;
-    }
 
     public List<Category> categories() {
         return categoryRepository.listCategories();

@@ -5,6 +5,7 @@ import cn.marketkitchen.image.LocalImageStorage;
 import cn.marketkitchen.web.ApiResponse;
 import java.io.IOException;
 import java.time.Duration;
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -19,12 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
+@RequiredArgsConstructor
 public class ImageController {
     private final LocalImageStorage images;
-
-    public ImageController(LocalImageStorage images) {
-        this.images = images;
-    }
 
     @PostMapping(value = "/api/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)

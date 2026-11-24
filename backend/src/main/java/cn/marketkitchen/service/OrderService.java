@@ -13,22 +13,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final CategoryRepository categoryRepository;
     private final OrderRepository orderRepository;
     private final TransactionTemplate transactions;
-
-    public OrderService(CategoryRepository categoryRepository, OrderRepository orderRepository,
-            TransactionTemplate transactions) {
-        this.categoryRepository = categoryRepository;
-        this.orderRepository = orderRepository;
-        this.transactions = transactions;
-    }
 
     public List<Order> recentOrders() {
         return orderRepository.recentOrders();

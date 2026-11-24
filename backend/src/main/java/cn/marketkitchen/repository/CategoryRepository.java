@@ -10,17 +10,14 @@ import cn.marketkitchen.mapper.model.RecipeRow;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class CategoryRepository {
     private final CategoryMapper categories;
     private final RecipeMapper recipes;
-
-    public CategoryRepository(CategoryMapper categories, RecipeMapper recipes) {
-        this.categories = categories;
-        this.recipes = recipes;
-    }
 
     public List<Category> listCategories() {
         return categories.listWithRecipes().stream().map(CategoryRow::toCategory).toList();

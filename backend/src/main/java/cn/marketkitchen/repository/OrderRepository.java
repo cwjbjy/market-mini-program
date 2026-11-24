@@ -8,15 +8,13 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class OrderRepository {
     private final OrderMapper orders;
-
-    public OrderRepository(OrderMapper orders) {
-        this.orders = orders;
-    }
 
     public List<Order> recentOrders() {
         return orders.recentWithItems().stream().map(OrderRepository::toOrder).toList();

@@ -7,8 +7,10 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.Getter;
 
 @TableName("orders")
+@Getter
 public class OrderRow {
     @TableId(type = IdType.INPUT)
     private String id;
@@ -23,21 +25,5 @@ public class OrderRow {
         this.id = id;
         this.displayDate = displayDate;
         this.createdAt = createdAt;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public String getDisplayDate() {
-        return displayDate;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public List<OrderItemRow> getItems() {
-        return items;
     }
 }
