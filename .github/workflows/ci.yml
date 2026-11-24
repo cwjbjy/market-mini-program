@@ -1,9 +1,10 @@
-name: Backend CI and release
+name: Backend release
 
 on:
   pull_request:
   push:
-    branches: ['**']
+    # Build and deploy only when a tag is pushed; ordinary branch pushes skip CI.
+    tags: ['**']
 
 permissions:
   contents: read
@@ -62,7 +63,9 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ env.ACR_IMAGE }}:sha-${{ github.sha }}
+          tags: |
+            ${{ env.ACR_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.ACR_IMAGE }}:${{ github.ref_name }}
           provenance: false
           sbom: false
           cache-from: type=gha,scope=market-kitchen

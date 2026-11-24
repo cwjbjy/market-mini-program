@@ -22,7 +22,7 @@
       <text class="menu-hero__title">家庭厨房</text>
       <text class="menu-hero__meta">今日菜单<text wx:if="{{recipeCount}}"> · {{recipeCount}} 道菜谱</text></text>
     </view>
-    <image class="menu-hero__image" src="/static/index/banner.jpg" mode="aspectFit" aria-hidden="true" />
+    <image class="menu-hero__image" src="/static/index/banner.png" mode="aspectFit" aria-hidden="true" />
   </view>
 
   <view class="toolbar">

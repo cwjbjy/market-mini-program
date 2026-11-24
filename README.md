@@ -67,7 +67,7 @@ docker build -t market-kitchen:local .
 
 ### GitHub Actions 发布到阿里云
 
-推送任意分支时，CI 使用 GitHub runner 预装的 MySQL 执行后端测试。测试通过后构建 `linux/amd64` Java 后端镜像，以 `sha-<提交 SHA>` 标记并推送到杭州 ACR 的 `node_caowj/market-kitchen` 仓库。PR 只运行测试。生产发布通过 SSH 在 `/opt/market-kitchen` 拉取并更新后端镜像，复用服务器已有的 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`。家庭厨房拥有独立的 MySQL 容器和数据卷。新后端通过健康检查后记录本次镜像摘要，启动失败时尝试恢复上一版。
+推送 tag 时，CI 使用 GitHub runner 预装的 MySQL 执行后端测试。测试通过后构建 `linux/amd64` Java 后端镜像，以 `<tag>` 和 `sha-<提交 SHA>` 标记并推送到杭州 ACR 的 `node_caowj/market-kitchen` 仓库。普通分支推送不触发 CI，PR 只运行测试。生产发布通过 SSH 在 `/opt/market-kitchen` 拉取并更新后端镜像，复用服务器已有的 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`。家庭厨房拥有独立的 MySQL 容器和数据卷。新后端通过健康检查后记录本次镜像摘要，启动失败时尝试恢复上一版。
 
 首次准备包括以下四步。
 
@@ -87,10 +87,11 @@ docker build -t market-kitchen:local .
 | `DEPLOY_HOST`、`DEPLOY_USER` | 服务器地址与 SSH 用户 |
 | `DEPLOY_SSH_KEY` | 部署专用 SSH 私钥 |
 
-配置完成后，提交代码并推送分支即可发布。
+配置完成后，日常提交推送分支不会触发 CI。需要发布时打一个 tag 并推送即可，CI 会依次执行测试、构建容器和部署。
 
 ```powershell
-git push
+git tag v1.2.3
+git push origin v1.2.3
 ```
 
 首次部署会创建专用 MySQL 容器。若服务器曾运行后端与 MySQL 合并镜像，CI 会先确认两边的 MySQL 版本一致，再停止旧容器并将该数据卷交给新的 MySQL 容器。每次成功部署的配置和镜像摘要保存为部署目录下的 `compose.prod.yml` 和 `.market-image`。在服务器查看当前部署可执行以下命令。
