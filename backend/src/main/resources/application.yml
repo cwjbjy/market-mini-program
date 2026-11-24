@@ -7,9 +7,10 @@ spring:
     url: ${MARKET_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/market_app?sslMode=DISABLED&allowPublicKeyRetrieval=true}
     username: ${MARKET_MYSQL_USER:market}
     password: ${MARKET_MYSQL_PASSWORD:market-local}
-  sql:
-    init:
-      mode: always
+  flyway:
+    # 旧库从基线 0 接入，再执行幂等的 V1 建表脚本。
+    baseline-on-migrate: true
+    baseline-version: '0'
   servlet:
     multipart:
       max-file-size: 10MB

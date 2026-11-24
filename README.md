@@ -28,7 +28,7 @@
 
 ## 本地运行
 
-在项目根目录启动 MySQL。Compose 将 `3306` 绑定到本机，等待应用用户可以连接 `market_app`。Java 后端首次启动时会创建所需的表。
+在项目根目录启动 MySQL。Compose 将 `3306` 绑定到本机，等待应用用户可以连接 `market_app`。Java 后端启动时由 Flyway 创建或升级表结构。
 
 ```powershell
 docker compose up -d --wait
@@ -63,7 +63,15 @@ docker build -t market-kitchen:local .
 
 线上 Compose 通过项目内部网络连接 MySQL，保留原有的 `mysql_data` 数据卷和 `uploads` 图片目录。Java 后端默认通过宿主机 `127.0.0.1:9001` 接收反向代理流量。
 
-首次异机部署要上线本地已有菜单时，使用 `mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --no-create-info --skip-triggers market_app` 从本机导出数据，再用线上 MySQL 容器里的 `mysql` 客户端导入已经初始化表结构的空库。把 `backend/local/uploads` 中的图片复制到目标主机的部署目录下。
+生产 MySQL 使用 64 MiB 的 InnoDB 缓冲池，关闭 Performance Schema，容器内存上限为 512 MiB。首次发布这组参数时，Compose 会短暂重建 MySQL 容器并挂载原有数据卷。
+
+首次异机部署要上线本地已有菜单时，使用 `mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --no-create-info --skip-triggers market_app categories recipes orders order_items` 从本机导出业务数据，再用线上 MySQL 容器里的 `mysql` 客户端导入已经初始化表结构的空库。把 `backend/local/uploads` 中的图片复制到目标主机的部署目录下。
+
+### 数据库表结构迁移
+
+迁移脚本保存在 [db/migration](backend/src/main/resources/db/migration)。首次接入 Flyway 时，已有业务表的 `market_app` 会自动登记基线 `0`，再执行与旧版相同的幂等建表 SQL。全新数据库直接执行 `V1__initial_schema.sql`。按现有 tag 流程发布即可，由后端启动时完成迁移。
+
+后续表结构变更使用新的版本脚本，比如 `V2__add_order_remark.sql`。Flyway 在 `flyway_schema_history` 记录已经应用的版本。回滚后端镜像时，已经提交的 MySQL 表结构变更仍会保留。
 
 ### GitHub Actions 发布到阿里云
 

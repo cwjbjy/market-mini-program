@@ -4,7 +4,8 @@ services:
   mysql:
     image: registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest
     pull_policy: never
-    command: ["mysqld", "--mysqlx=OFF"]
+    command: ["mysqld", "--mysqlx=OFF", "--performance-schema=OFF", "--innodb-buffer-pool-size=64M"]
+    mem_limit: 512m
     environment:
       MYSQL_DATABASE: market_app
       MYSQL_USER: "${MARKET_MYSQL_USER:-market}"
@@ -37,6 +38,7 @@ services:
       - ./uploads:/data/uploads
     restart: unless-stopped
     stop_grace_period: 45s
+    # 服务器内存余量有限，暂缓引入 Actuator，沿用菜单接口做健康检查。
     healthcheck:
       test:
         - CMD

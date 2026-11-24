@@ -123,8 +123,13 @@ jobs:
           printf '%s\n' "$MARKET_IMAGE" > "$stage/image"
           compose=(docker compose --project-directory "$PWD" --env-file .env -f "$stage/compose.prod.yml")
           mysql_image=$("${compose[@]}" config --images mysql)
-          if ! docker image inspect "$mysql_image" >/dev/null 2>&1; then
+          if ! mysql_image_id=$(docker image inspect --format '{{.Id}}' "$mysql_image" 2>/dev/null); then
             echo "Preload $mysql_image on the server before deploying." >&2
+            exit 1
+          fi
+          old_mysql=$("${compose[@]}" ps --all --quiet mysql)
+          if [[ -n "$old_mysql" && "$(docker inspect --format '{{.Image}}' "$old_mysql")" != "$mysql_image_id" ]]; then
+            echo 'The preloaded MySQL image differs from the image of the existing MySQL container.' >&2
             exit 1
           fi
           "${compose[@]}" pull market
@@ -151,15 +156,19 @@ jobs:
             legacy=true
           fi
 
-          if ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never --no-recreate mysql \
+          if ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never mysql \
             || ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never --no-deps market; then
             "${compose[@]}" ps -a || true
             if [[ -f compose.prod.yml && -s .market-image ]]; then
               echo 'Restoring the previous release.' >&2
+              MARKET_IMAGE=$(<.market-image)
+              previous_compose=(docker compose --env-file .env -f compose.prod.yml)
               if [[ "$legacy" == true ]]; then
                 "${compose[@]}" stop mysql
+              else
+                "${previous_compose[@]}" up -d --wait --wait-timeout 200 --pull never mysql
               fi
-              MARKET_IMAGE=$(<.market-image) docker compose --env-file .env -f compose.prod.yml \
+              "${previous_compose[@]}" \
                 up -d --wait --wait-timeout 200 --pull missing --no-deps market
             fi
             exit 1
