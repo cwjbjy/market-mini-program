@@ -63,7 +63,7 @@ docker build -t market-kitchen:local .
 
 线上 Compose 通过项目内部网络连接 MySQL，保留原有的 `mysql_data` 数据卷和 `uploads` 图片目录。Java 后端默认通过宿主机 `127.0.0.1:9001` 接收反向代理流量。
 
-生产 MySQL 使用 64 MiB 的 InnoDB 缓冲池，关闭 Performance Schema，容器内存上限为 512 MiB。首次发布这组参数时，Compose 会短暂重建 MySQL 容器并挂载原有数据卷。
+生产 MySQL 使用 64 MiB 的 InnoDB 缓冲池，关闭 Performance Schema，容器内存上限为 512 MiB。将这些参数同步到服务器上的 Compose 文件后，下一次部署会短暂重建 MySQL 容器并挂载原有数据卷。
 
 首次异机部署要上线本地已有菜单时，使用 `mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --no-create-info --skip-triggers market_app categories recipes orders order_items` 从本机导出业务数据，再用线上 MySQL 容器里的 `mysql` 客户端导入已经初始化表结构的空库。把 `backend/local/uploads` 中的图片复制到目标主机的部署目录下。
 
@@ -75,13 +75,15 @@ docker build -t market-kitchen:local .
 
 ### GitHub Actions 发布到阿里云
 
-推送 tag 时，CI 使用 GitHub runner 预装的 MySQL 执行后端测试。测试通过后构建 `linux/amd64` Java 后端镜像，以 `<tag>` 和 `sha-<提交 SHA>` 标记并推送到杭州 ACR 的 `node_caowj/market-kitchen` 仓库。普通分支推送不触发 CI，PR 只运行测试。生产发布通过 SSH 在 `/opt/market-kitchen` 拉取并更新后端镜像，复用服务器已有的 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`。家庭厨房拥有独立的 MySQL 容器和数据卷。新后端通过健康检查后记录本次镜像摘要，启动失败时尝试恢复上一版。
+推送 tag 时，CI 使用 GitHub runner 预装的 MySQL 执行后端测试。测试通过后构建 `linux/amd64` Java 后端镜像，以 `<tag>` 和 `sha-<提交 SHA>` 标记并推送到杭州 ACR 的 `node_caowj/market-kitchen` 仓库。普通分支推送不触发 CI，PR 只运行测试。
+
+生产部署通过 `appleboy/ssh-action` 登录服务器，在 `/opt/market-kitchen` 用已有的 `compose.prod.yml` 执行 `docker compose up -d --wait`。后端使用本次构建的镜像摘要，独立的 MySQL 服务使用服务器预拉取的镜像和原有数据卷。启动失败或健康检查超时时，CI 将该次部署标记为失败。
 
 首次准备包括以下四步。
 
 1. 在阿里云 ACR 创建 `node_caowj/market-kitchen` 私有镜像仓库。
 2. 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 配置下表。SSH 端口默认为 22，可通过变量 `DEPLOY_SSH_PORT` 修改。
-3. 为部署用户准备可写的 `/opt/market-kitchen`，服务器需要 Docker Compose 和 Bash，SSH 端口需对部署 runner 可达。部署用户需要登录 ACR，并确认服务器本地已有 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`。该镜像只需在服务器预拉取一次。将部署专用 SSH 公钥加入该用户的 `authorized_keys`。
+3. 为部署用户准备可写的 `/opt/market-kitchen`，将仓库中的 [compose.prod.yml](compose.prod.yml) 上传到该目录。服务器需要 Docker Compose，SSH 端口需对部署 runner 可达。部署用户需要登录 ACR，预拉取 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`，并将部署专用 SSH 公钥加入该用户的 `authorized_keys`。
 4. 将 `docker/init-env.sh` 上传到服务器的 `/opt/market-kitchen/init-env.sh`。使用部署用户在服务器执行以下命令。脚本用 OpenSSL 生成应用账号和 root 的密码，保留已有的 `.env`。宿主机 Nginx 将 HTTPS API 域名反代到 `127.0.0.1:9001`，可通过 `.env` 中的 `MARKET_HOST_PORT` 修改本机端口。该域名需要同时代理 `/api/` 和 `/static/images/market/`。
 
    ```sh
@@ -102,12 +104,14 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-首次部署会创建专用 MySQL 容器。若服务器曾运行后端与 MySQL 合并镜像，CI 会先确认两边的 MySQL 版本一致，再停止旧容器并将该数据卷交给新的 MySQL 容器。每次成功部署的配置和镜像摘要保存为部署目录下的 `compose.prod.yml` 和 `.market-image`。在服务器查看当前部署可执行以下命令。
+Compose 配置由服务器上的文件提供。仓库中的 `compose.prod.yml` 有变更时，先把新文件同步到服务器，再发布 tag。在服务器可直接查询容器状态和后端使用的镜像。
 
 ```sh
-cd /opt/market-kitchen
-MARKET_IMAGE="$(cat .market-image)" docker compose -f compose.prod.yml ps
+docker ps --filter label=com.docker.compose.project=market-kitchen
+docker inspect --format '{{.Config.Image}}' market-kitchen-market-1
 ```
+
+新后端通过健康检查后，CI 在同一次 SSH 部署中清理服务器上本项目未被容器使用的旧后端镜像。
 
 在 `frontend/config.js` 为体验版和正式版填写部署环境的 HTTPS API 地址，并在微信小程序后台配置 request、uploadFile 合法域名。使用实际小程序 AppID，通过微信开发者工具上传 `frontend/`。
 

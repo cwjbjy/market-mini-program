@@ -77,103 +77,42 @@ jobs:
     timeout-minutes: 15
     environment: production
     steps:
-      - uses: actions/checkout@v4
       - name: Deploy the published image
-        shell: bash
+        uses: appleboy/ssh-action@v1
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
           IMAGE_DIGEST: ${{ needs.build-and-push.outputs.digest }}
-        run: |
-          : "${DEPLOY_HOST:?Set DEPLOY_HOST}"
-          : "${DEPLOY_USER:?Set DEPLOY_USER}"
-          : "${DEPLOY_SSH_KEY:?Set DEPLOY_SSH_KEY}"
-          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
-          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
-          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+          envs: ACR_IMAGE,IMAGE_DIGEST
+          script: |
+            set -eu
+            cd /opt/market-kitchen
+            export COMPOSE_FILE=compose.prod.yml
+            export MARKET_IMAGE="$ACR_IMAGE@${IMAGE_DIGEST:?Missing image digest}"
 
-          key_dir=$(mktemp -d)
-          trap 'rm -f -- "$key_dir/key"; rmdir -- "$key_dir"' EXIT
-          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$key_dir/key"
-          chmod 600 "$key_dir/key"
-          ssh_options=(-i "$key_dir/key" -o BatchMode=yes -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=accept-new
-            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-          remote() {
-            ssh "${ssh_options[@]}" -p "$DEPLOY_SSH_PORT" -l "$DEPLOY_USER" -- "$DEPLOY_HOST" "$@"
-          }
+            docker compose up -d --wait --wait-timeout 200
+            docker compose ps
 
-          stage=$(remote 'mktemp -d /opt/market-kitchen/.incoming.XXXXXXXX')
-          [[ "$stage" =~ ^/opt/market-kitchen/\.incoming\.[A-Za-z0-9]+$ ]]
-          cleanup() {
-            remote "rm -f -- '$stage/compose.prod.yml' '$stage/image'; rmdir -- '$stage'" || true
-            rm -f -- "$key_dir/key"
-            rmdir -- "$key_dir"
-          }
-          trap cleanup EXIT
+            if current_id=$(docker image inspect --format '{{.Id}}' "$MARKET_IMAGE") &&
+              images=$(docker image ls --digests --no-trunc --format '{{.Repository}} {{.Tag}} {{.Digest}} {{.ID}}' "$ACR_IMAGE"); then
+              printf '%s\n' "$images" | while read -r repository tag digest image_id; do
+                [ "$repository" = "$ACR_IMAGE" ] && [ "$image_id" != "$current_id" ] || continue
+                containers=$(docker ps -aq --filter "ancestor=$image_id") || break
+                [ -z "$containers" ] || continue
 
-          scp "${ssh_options[@]}" -P "$DEPLOY_SSH_PORT" \
-            compose.prod.yml "$DEPLOY_USER@$DEPLOY_HOST:$stage/"
-
-          remote "cd /opt/market-kitchen && bash -se -- '$stage' '$ACR_IMAGE@$IMAGE_DIGEST'" <<'REMOTE'
-          stage=$1
-          export MARKET_IMAGE=$2
-          printf '%s\n' "$MARKET_IMAGE" > "$stage/image"
-          compose=(docker compose --project-directory "$PWD" --env-file .env -f "$stage/compose.prod.yml")
-          mysql_image=$("${compose[@]}" config --images mysql)
-          if ! mysql_image_id=$(docker image inspect --format '{{.Id}}' "$mysql_image" 2>/dev/null); then
-            echo "Preload $mysql_image on the server before deploying." >&2
-            exit 1
-          fi
-          old_mysql=$("${compose[@]}" ps --all --quiet mysql)
-          if [[ -n "$old_mysql" && "$(docker inspect --format '{{.Image}}' "$old_mysql")" != "$mysql_image_id" ]]; then
-            echo 'The preloaded MySQL image differs from the image of the existing MySQL container.' >&2
-            exit 1
-          fi
-          "${compose[@]}" pull market
-
-          # Stop an earlier combined container before handing its data volume to MySQL.
-          old_app=$("${compose[@]}" ps --all --quiet market)
-          legacy=false
-          if [[ -n "$old_app" && -n "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$old_app")" ]]; then
-            if [[ ! -f compose.prod.yml || ! -s .market-image ]]; then
-              echo 'The existing combined release is missing its rollback configuration.' >&2
-              exit 1
+                if [ "$tag" != '<none>' ]; then
+                  old_ref="$repository:$tag"
+                elif [ "$digest" != '<none>' ]; then
+                  old_ref="$repository@$digest"
+                else
+                  continue
+                fi
+                docker image rm --no-prune "$old_ref" ||
+                  echo "Could not remove old backend image $old_ref." >&2
+              done
+            else
+              echo 'Old backend image cleanup did not finish.' >&2
             fi
-            mysql_version() {
-              docker run --rm --pull never --network none --entrypoint mysqld "$1" --version |
-                sed -nE 's/.* Ver ([0-9.]+).*/\1/p'
-            }
-            old_version=$(mysql_version "$(docker inspect --format '{{.Image}}' "$old_app")")
-            new_version=$(mysql_version "$mysql_image")
-            if [[ -z "$old_version" || "$old_version" != "$new_version" ]]; then
-              echo "MySQL versions must match before switching the existing volume ($old_version -> $new_version)." >&2
-              exit 1
-            fi
-            docker stop --timeout 45 "$old_app" >/dev/null
-            legacy=true
-          fi
-
-          if ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never mysql \
-            || ! "${compose[@]}" up -d --wait --wait-timeout 200 --pull never --no-deps market; then
-            "${compose[@]}" ps -a || true
-            if [[ -f compose.prod.yml && -s .market-image ]]; then
-              echo 'Restoring the previous release.' >&2
-              MARKET_IMAGE=$(<.market-image)
-              previous_compose=(docker compose --env-file .env -f compose.prod.yml)
-              if [[ "$legacy" == true ]]; then
-                "${compose[@]}" stop mysql
-              else
-                "${previous_compose[@]}" up -d --wait --wait-timeout 200 --pull never mysql
-              fi
-              "${previous_compose[@]}" \
-                up -d --wait --wait-timeout 200 --pull missing --no-deps market
-            fi
-            exit 1
-          fi
-          mv -f -- "$stage/compose.prod.yml" compose.prod.yml
-          mv -f -- "$stage/image" .market-image
-          docker compose --env-file .env -f compose.prod.yml ps
-          REMOTE
