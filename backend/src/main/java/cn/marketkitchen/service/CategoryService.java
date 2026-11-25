@@ -16,14 +16,13 @@ import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Manages categories and the recipes they contain. */
 @Service
 @RequiredArgsConstructor
 public class CategoryService {
     private final CategoryRepository categoryRepository;
-    private final TransactionTemplate transactions;
 
     public List<CategoryVO> categories() {
         return categoryRepository.listCategories();
@@ -37,15 +36,16 @@ public class CategoryService {
         });
     }
 
+    @Transactional
     public CategoryVO updateCategory(String id, SaveCategory input) {
         CategoryVO updated = categoryFromInput(id, input);
-        return writeCategory(() -> transactions.execute(status -> {
+        return writeCategory(() -> {
             if (!categoryRepository.lockCategory(id)) {
                 throw BusinessException.notFound("分类不存在");
             }
             categoryRepository.updateCategory(updated);
             return categoryRepository.findCategory(id);
-        }));
+        });
     }
 
     public void deleteCategory(String id) {
@@ -54,22 +54,20 @@ public class CategoryService {
         }
     }
 
+    @Transactional
     public void reorderCategories(SortOrder order) {
-        transactions.executeWithoutResult(status -> {
-            var positions = categoryRepository.lockCategoryPositions();
-            var current = positions.stream().map(CategoryPosition::id).toList();
-            if (needsReorder(order, current)) categoryRepository.updateCategoryOrder(positions, order.ids());
-        });
+        var positions = categoryRepository.lockCategoryPositions();
+        var current = positions.stream().map(CategoryPosition::id).toList();
+        if (needsReorder(order, current)) categoryRepository.updateCategoryOrder(positions, order.ids());
     }
 
+    @Transactional
     public void reorderRecipes(String categoryId, SortOrder order) {
-        transactions.executeWithoutResult(status -> {
-            if (!categoryRepository.lockCategory(categoryId)) {
-                throw BusinessException.notFound("分类不存在");
-            }
-            var current = categoryRepository.lockRecipeOrder(categoryId);
-            if (needsReorder(order, current)) categoryRepository.updateRecipeOrder(categoryId, order.ids());
-        });
+        if (!categoryRepository.lockCategory(categoryId)) {
+            throw BusinessException.notFound("分类不存在");
+        }
+        var current = categoryRepository.lockRecipeOrder(categoryId);
+        if (needsReorder(order, current)) categoryRepository.updateRecipeOrder(categoryId, order.ids());
     }
 
     private static boolean needsReorder(SortOrder order, List<String> current) {
@@ -90,29 +88,27 @@ public class CategoryService {
         return require(categoryRepository.findRecipe(id), "菜谱不存在");
     }
 
+    @Transactional
     public RecipeVO createRecipe(SaveRecipe input) {
         RecipeVO recipe = recipeFromInput(UUID.randomUUID().toString(), input);
-        return transactions.execute(status -> {
-            if (!categoryRepository.lockCategory(recipe.categoryId())) {
-                throw BusinessException.notFound("分类不存在");
-            }
-            categoryRepository.insertRecipe(recipe);
-            return recipe;
-        });
+        if (!categoryRepository.lockCategory(recipe.categoryId())) {
+            throw BusinessException.notFound("分类不存在");
+        }
+        categoryRepository.insertRecipe(recipe);
+        return recipe;
     }
 
+    @Transactional
     public RecipeVO updateRecipe(String id, SaveRecipe input) {
         RecipeVO updated = recipeFromInput(id, input);
-        return transactions.execute(status -> {
-            boolean targetExists = categoryRepository.lockCategory(updated.categoryId());
-            var current = require(categoryRepository.lockRecipe(id), "菜谱不存在");
-            if (!targetExists) {
-                throw BusinessException.notFound("目标分类不存在");
-            }
-            RecipeVO recipe = updated.withOrderCount(current.orderCount());
-            categoryRepository.updateRecipe(recipe, current.categoryId());
-            return recipe;
-        });
+        boolean targetExists = categoryRepository.lockCategory(updated.categoryId());
+        var current = require(categoryRepository.lockRecipe(id), "菜谱不存在");
+        if (!targetExists) {
+            throw BusinessException.notFound("目标分类不存在");
+        }
+        RecipeVO recipe = updated.withOrderCount(current.orderCount());
+        categoryRepository.updateRecipe(recipe, current.categoryId());
+        return recipe;
     }
 
     public void deleteRecipe(String id) {
