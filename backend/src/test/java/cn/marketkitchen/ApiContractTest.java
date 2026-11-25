@@ -18,13 +18,13 @@ import cn.marketkitchen.controller.CategoryController;
 import cn.marketkitchen.controller.ImageController;
 import cn.marketkitchen.controller.OrderController;
 import cn.marketkitchen.controller.RecipeController;
-import cn.marketkitchen.domain.Category;
-import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.dto.CatalogDtos.SortOrder;
 import cn.marketkitchen.exception.BusinessException;
 import cn.marketkitchen.image.LocalImageStorage;
 import cn.marketkitchen.service.CategoryService;
 import cn.marketkitchen.service.OrderService;
+import cn.marketkitchen.vo.CategoryVO;
+import cn.marketkitchen.vo.RecipeVO;
 import cn.marketkitchen.web.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.image.BufferedImage;
@@ -58,8 +58,8 @@ class ApiContractTest {
 
     @Test
     void listsCategoriesWithNativeFieldNames() throws Exception {
-        var recipe = new Recipe("r1", "c1", "土豆丝", "/static/images/market/potato.jpg", "土豆", "切丝炒熟", 4);
-        when(categoryService.categories()).thenReturn(List.of(new Category("c1", "家常菜", recipe.image(), List.of(recipe))));
+        var recipe = new RecipeVO("r1", "c1", "土豆丝", "/static/images/market/potato.jpg", "土豆", "切丝炒熟", 4);
+        when(categoryService.categories()).thenReturn(List.of(new CategoryVO("c1", "家常菜", recipe.image(), List.of(recipe))));
         mvc.perform(get("/api/categories"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))

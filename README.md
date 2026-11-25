@@ -7,12 +7,12 @@
 | 路径 | 内容 |
 | --- | --- |
 | `frontend/` | 原生小程序、TDesign 组件依赖和静态素材 |
-| `backend/` | Java 17、Spring Boot 3.5.14 和 MyBatis-Plus，按 controller、service、domain、repository、mapper 等职责分层 |
+| `backend/` | Java 17、Spring Boot 3.5.14 和 MyBatis-Plus，按 controller、service、vo、entity、dto、repository、mapper 等职责分层 |
 | `compose.yml` | 本地 MySQL 8.0 容器和数据卷 |
 | `Dockerfile` | 构建 Java 后端镜像 |
 | `compose.prod.yml` | 部署 Java 后端和独立的 MySQL 容器 |
 
-`controller` 提供 HTTP 接口，`dto` 定义请求数据，`web` 放置统一响应和 HTTP 异常处理。`CategoryController` 和 `RecipeController` 共用 `CategoryService`。Service 处理业务规则和事务，Repository 接收 `domain` 中的业务对象，并通过 Mapper 和 `mapper.model` 中的行对象读写 MySQL。菜单联查、订单明细和下单锁定的 SQL 位于 `backend/src/main/resources/mapper/`。`image` 包负责图片引用校验和本地文件存储。
+`controller` 提供 HTTP 接口，`dto` 定义请求数据（`CatalogDtos.SaveCategory`、`OrderDtos.SubmitOrder` 等），`vo` 定义返回给前端的业务对象（`CategoryVO`、`RecipeVO`、`OrderVO`），`web` 放置统一响应和 HTTP 异常处理。`CategoryController` 和 `RecipeController` 共用 `CategoryService`。Service 处理业务规则和事务，Repository 接收 `vo` 中的业务对象，并通过 Mapper 和 `entity` 中的表行对象（`CategoryEntity`、`RecipeEntity`、`OrderEntity`）读写 MySQL。菜单联查、订单明细和下单锁定的 SQL 位于 `backend/src/main/resources/mapper/`。`image` 包负责图片引用校验和本地文件存储。
 
 ### 小程序目录与分包
 

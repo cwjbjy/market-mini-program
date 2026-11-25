@@ -1,7 +1,7 @@
 package cn.marketkitchen.mapper;
 
-import cn.marketkitchen.mapper.model.CategoryPosition;
-import cn.marketkitchen.mapper.model.CategoryRow;
+import cn.marketkitchen.entity.CategoryEntity;
+import cn.marketkitchen.entity.CategoryPosition;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import java.util.List;
 import org.apache.ibatis.annotations.Arg;
@@ -10,10 +10,10 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
-public interface CategoryMapper extends BaseMapper<CategoryRow> {
-    List<CategoryRow> listWithRecipes();
+public interface CategoryMapper extends BaseMapper<CategoryEntity> {
+    List<CategoryEntity> listWithRecipes();
 
-    CategoryRow findWithRecipes(@Param("id") String id);
+    CategoryEntity findWithRecipes(@Param("id") String id);
 
     @Select("SELECT id FROM categories WHERE id = #{id} FOR UPDATE")
     String lockId(@Param("id") String id);

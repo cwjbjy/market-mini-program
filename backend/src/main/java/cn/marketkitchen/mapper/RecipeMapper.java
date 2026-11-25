@@ -1,6 +1,6 @@
 package cn.marketkitchen.mapper;
 
-import cn.marketkitchen.mapper.model.RecipeRow;
+import cn.marketkitchen.entity.RecipeEntity;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import java.util.Collection;
 import java.util.List;
@@ -8,10 +8,10 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
-public interface RecipeMapper extends BaseMapper<RecipeRow> {
-    RecipeRow lockRecipe(@Param("id") String id);
+public interface RecipeMapper extends BaseMapper<RecipeEntity> {
+    RecipeEntity lockRecipe(@Param("id") String id);
 
-    List<RecipeRow> lockRecipes(@Param("ids") Collection<String> ids);
+    List<RecipeEntity> lockRecipes(@Param("ids") Collection<String> ids);
 
     void incrementOrderCounts(@Param("ids") Collection<String> ids);
 

@@ -3,9 +3,6 @@ package cn.marketkitchen;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cn.marketkitchen.domain.Category;
-import cn.marketkitchen.domain.Order;
-import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.dto.CatalogDtos.SaveCategory;
 import cn.marketkitchen.dto.CatalogDtos.SaveRecipe;
 import cn.marketkitchen.dto.CatalogDtos.SortOrder;
@@ -14,6 +11,9 @@ import cn.marketkitchen.dto.OrderDtos.SubmitOrder;
 import cn.marketkitchen.exception.BusinessException;
 import cn.marketkitchen.service.CategoryService;
 import cn.marketkitchen.service.OrderService;
+import cn.marketkitchen.vo.CategoryVO;
+import cn.marketkitchen.vo.OrderVO;
+import cn.marketkitchen.vo.RecipeVO;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -125,7 +125,7 @@ class MySqlFlowTest {
                 .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT));
 
         var added = categoryService.createCategory(new SaveCategory("主食", IMAGE));
-        assertThat(categoryService.categories()).extracting(Category::id)
+        assertThat(categoryService.categories()).extracting(CategoryVO::id)
                 .containsExactly(third.id(), first.id(), second.id(), added.id());
     }
 
@@ -149,7 +149,7 @@ class MySqlFlowTest {
         categoryService.reorderRecipes(firstCategory.id(), new SortOrder(List.of(second.id(), first.id()), original));
         var added = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "蘑菇", IMAGE, "蘑菇", "炒"));
         var menu = categoryService.categories();
-        assertThat(menu.get(0).recipes()).extracting(Recipe::id).containsExactly(second.id(), first.id(), added.id());
+        assertThat(menu.get(0).recipes()).extracting(RecipeVO::id).containsExactly(second.id(), first.id(), added.id());
         assertThat(menu.get(1).recipes()).containsExactly(other);
     }
 
@@ -163,7 +163,7 @@ class MySqlFlowTest {
         assertThat(orders.recentOrders()).isEmpty();
 
         var request = new SubmitOrder("one-key", List.of(new SubmitItem(recipe.id(), 3)));
-        Order order = orders.submit(request);
+        OrderVO order = orders.submit(request);
         assertThat(orders.submit(request)).isEqualTo(order);
         assertThat(categoryService.recipe(recipe.id()).orderCount()).isOne();
         assertThatThrownBy(() -> orders.submit(new SubmitOrder("one-key", List.of(new SubmitItem(recipe.id(), 2)))))
@@ -188,12 +188,12 @@ class MySqlFlowTest {
 
         var executor = Executors.newFixedThreadPool(4);
         try {
-            List<Callable<Order>> actions = new ArrayList<>();
+            List<Callable<OrderVO>> actions = new ArrayList<>();
             for (int i = 0; i < 4; i++) {
                 actions.add(() -> orders.submit(request));
             }
             var submitted = executor.invokeAll(actions, 20, TimeUnit.SECONDS);
-            Order first = submitted.get(0).get();
+            OrderVO first = submitted.get(0).get();
             for (var pending : submitted) {
                 assertThat(pending.get()).isEqualTo(first);
             }
@@ -213,13 +213,13 @@ class MySqlFlowTest {
         var secondItem = new SubmitItem(second.id(), 2);
         var executor = Executors.newFixedThreadPool(2);
         try {
-            var submitted = executor.invokeAll(List.<Callable<Order>>of(
+            var submitted = executor.invokeAll(List.<Callable<OrderVO>>of(
                     () -> orders.submit(new SubmitOrder("first-order", List.of(firstItem, secondItem))),
                     () -> orders.submit(new SubmitOrder("second-order", List.of(secondItem, firstItem)))),
                     20, TimeUnit.SECONDS);
-            assertThat(submitted.get(0).get().items()).extracting(Order.Item::recipeId)
+            assertThat(submitted.get(0).get().items()).extracting(OrderVO.Item::recipeId)
                     .containsExactly(first.id(), second.id());
-            assertThat(submitted.get(1).get().items()).extracting(Order.Item::recipeId)
+            assertThat(submitted.get(1).get().items()).extracting(OrderVO.Item::recipeId)
                     .containsExactly(second.id(), first.id());
             assertThat(orders.recentOrders()).containsExactlyInAnyOrder(submitted.get(0).get(), submitted.get(1).get());
             assertThat(categoryService.recipe(first.id()).orderCount()).isEqualTo(2);
@@ -241,7 +241,7 @@ class MySqlFlowTest {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, id, 0, "old", "旧菜品", IMAGE, "", "", 2);
         }
-        List<Order> page = orders.recentOrders();
+        List<OrderVO> page = orders.recentOrders();
         assertThat(page).hasSize(50);
         assertThat(page.get(0).id()).isEqualTo("legacy-52");
         assertThat(page.get(49).id()).isEqualTo("legacy-3");

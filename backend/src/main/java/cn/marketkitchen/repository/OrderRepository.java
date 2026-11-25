@@ -1,9 +1,9 @@
 package cn.marketkitchen.repository;
 
-import cn.marketkitchen.domain.Order;
+import cn.marketkitchen.entity.OrderEntity;
+import cn.marketkitchen.entity.OrderItemEntity;
 import cn.marketkitchen.mapper.OrderMapper;
-import cn.marketkitchen.mapper.model.OrderItemRow;
-import cn.marketkitchen.mapper.model.OrderRow;
+import cn.marketkitchen.vo.OrderVO;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -16,20 +16,20 @@ import org.springframework.stereotype.Repository;
 public class OrderRepository {
     private final OrderMapper orders;
 
-    public List<Order> recentOrders() {
+    public List<OrderVO> recentOrders() {
         return orders.recentWithItems().stream().map(OrderRepository::toOrder).toList();
     }
 
-    public Order find(String id) {
-        OrderRow row = orders.findWithItems(id);
+    public OrderVO find(String id) {
+        OrderEntity row = orders.findWithItems(id);
         return row == null ? null : toOrder(row);
     }
 
     public void insert(String id, String displayDate, Instant createdAt) {
-        orders.insert(new OrderRow(id, displayDate, utc(createdAt)));
+        orders.insert(new OrderEntity(id, displayDate, utc(createdAt)));
     }
 
-    public void insertItems(Order order) {
+    public void insertItems(OrderVO order) {
         orders.insertItems(order.id(), order.items());
     }
 
@@ -41,13 +41,13 @@ public class OrderRepository {
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
-    private static Order toOrder(OrderRow row) {
+    private static OrderVO toOrder(OrderEntity row) {
         LocalDateTime timestamp = row.getCreatedAt();
         Instant createdAt = timestamp == null ? null : timestamp.toInstant(ZoneOffset.UTC);
         String date = row.getDisplayDate();
         if (date.isBlank() && createdAt != null) {
-            date = Order.formatDisplayDate(createdAt);
+            date = OrderVO.formatDisplayDate(createdAt);
         }
-        return new Order(row.getId(), date, createdAt, row.getItems().stream().map(OrderItemRow::toItem).toList());
+        return new OrderVO(row.getId(), date, createdAt, row.getItems().stream().map(OrderItemEntity::toItem).toList());
     }
 }

@@ -2,9 +2,9 @@ package cn.marketkitchen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cn.marketkitchen.domain.Category;
-import cn.marketkitchen.domain.Recipe;
 import cn.marketkitchen.service.CategoryService;
+import cn.marketkitchen.vo.CategoryVO;
+import cn.marketkitchen.vo.RecipeVO;
 import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -42,8 +42,8 @@ class FlywayMigrationTest {
                     """, "legacy-recipe", "legacy", "旧菜谱", image, "豆腐", "清蒸");
 
             String versionQuery = "SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank";
-            var recipe = new Recipe("legacy-recipe", "legacy", "旧菜谱", image, "豆腐", "清蒸", 3);
-            var category = new Category("legacy", "旧分类", image, List.of(recipe));
+            var recipe = new RecipeVO("legacy-recipe", "legacy", "旧菜谱", image, "豆腐", "清蒸", 3);
+            var category = new CategoryVO("legacy", "旧分类", image, List.of(recipe));
             try (var application = startApplication(dataSource)) {
                 assertThat(application.getBean(CategoryService.class).categories()).containsExactly(category);
             }

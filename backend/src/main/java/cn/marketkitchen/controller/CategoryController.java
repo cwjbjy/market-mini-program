@@ -1,9 +1,9 @@
 package cn.marketkitchen.controller;
 
-import cn.marketkitchen.domain.Category;
 import cn.marketkitchen.dto.CatalogDtos.SaveCategory;
 import cn.marketkitchen.dto.CatalogDtos.SortOrder;
 import cn.marketkitchen.service.CategoryService;
+import cn.marketkitchen.vo.CategoryVO;
 import cn.marketkitchen.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -26,13 +26,13 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping
-    public ApiResponse<List<Category>> list() {
+    public ApiResponse<List<CategoryVO>> list() {
         return ApiResponse.success(categoryService.categories());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<Category> create(@Valid @RequestBody SaveCategory input) {
+    public ApiResponse<CategoryVO> create(@Valid @RequestBody SaveCategory input) {
         return ApiResponse.success(categoryService.createCategory(input));
     }
 
@@ -49,7 +49,7 @@ public class CategoryController {
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<Category> update(@PathVariable String id, @Valid @RequestBody SaveCategory input) {
+    public ApiResponse<CategoryVO> update(@PathVariable String id, @Valid @RequestBody SaveCategory input) {
         return ApiResponse.success(categoryService.updateCategory(id, input));
     }
 

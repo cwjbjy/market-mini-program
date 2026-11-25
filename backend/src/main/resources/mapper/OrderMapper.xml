@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.marketkitchen.mapper.OrderMapper">
-    <resultMap id="orderItem" type="cn.marketkitchen.mapper.model.OrderItemRow">
+    <resultMap id="orderItem" type="cn.marketkitchen.entity.OrderItemEntity">
         <constructor>
             <idArg column="line_number" javaType="_int"/>
             <arg column="recipe_id" javaType="string"/>
@@ -13,7 +13,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="orderWithItems" type="cn.marketkitchen.mapper.model.OrderRow">
+    <resultMap id="orderWithItems" type="cn.marketkitchen.entity.OrderEntity">
         <id property="id" column="id"/>
         <result property="displayDate" column="display_date"/>
         <result property="createdAt" column="created_at"/>

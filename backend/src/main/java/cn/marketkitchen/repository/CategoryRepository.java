@@ -1,12 +1,12 @@
 package cn.marketkitchen.repository;
 
-import cn.marketkitchen.domain.Category;
-import cn.marketkitchen.domain.Recipe;
+import cn.marketkitchen.entity.CategoryEntity;
+import cn.marketkitchen.entity.CategoryPosition;
+import cn.marketkitchen.entity.RecipeEntity;
 import cn.marketkitchen.mapper.CategoryMapper;
 import cn.marketkitchen.mapper.RecipeMapper;
-import cn.marketkitchen.mapper.model.CategoryPosition;
-import cn.marketkitchen.mapper.model.CategoryRow;
-import cn.marketkitchen.mapper.model.RecipeRow;
+import cn.marketkitchen.vo.CategoryVO;
+import cn.marketkitchen.vo.RecipeVO;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -19,21 +19,21 @@ public class CategoryRepository {
     private final CategoryMapper categories;
     private final RecipeMapper recipes;
 
-    public List<Category> listCategories() {
-        return categories.listWithRecipes().stream().map(CategoryRow::toCategory).toList();
+    public List<CategoryVO> listCategories() {
+        return categories.listWithRecipes().stream().map(CategoryEntity::toCategory).toList();
     }
 
-    public Category findCategory(String id) {
-        CategoryRow row = categories.findWithRecipes(id);
+    public CategoryVO findCategory(String id) {
+        CategoryEntity row = categories.findWithRecipes(id);
         return row == null ? null : row.toCategory();
     }
 
-    public void insertCategory(Category category) {
-        categories.insert(new CategoryRow(category.id(), category.name(), category.image()));
+    public void insertCategory(CategoryVO category) {
+        categories.insert(new CategoryEntity(category.id(), category.name(), category.image()));
     }
 
-    public void updateCategory(Category category) {
-        categories.updateById(new CategoryRow(category.id(), category.name(), category.image()));
+    public void updateCategory(CategoryVO category) {
+        categories.updateById(new CategoryEntity(category.id(), category.name(), category.image()));
     }
 
     public boolean deleteCategory(String id) {
@@ -79,32 +79,32 @@ public class CategoryRepository {
         }
     }
 
-    public Recipe findRecipe(String id) {
-        RecipeRow row = recipes.selectById(id);
+    public RecipeVO findRecipe(String id) {
+        RecipeEntity row = recipes.selectById(id);
         return row == null ? null : row.toRecipe();
     }
 
-    public Recipe lockRecipe(String id) {
-        RecipeRow row = recipes.lockRecipe(id);
+    public RecipeVO lockRecipe(String id) {
+        RecipeEntity row = recipes.lockRecipe(id);
         return row == null ? null : row.toRecipe();
     }
 
-    public List<Recipe> lockRecipes(Collection<String> ids) {
-        return recipes.lockRecipes(ids).stream().map(RecipeRow::toRecipe).toList();
+    public List<RecipeVO> lockRecipes(Collection<String> ids) {
+        return recipes.lockRecipes(ids).stream().map(RecipeEntity::toRecipe).toList();
     }
 
-    public void insertRecipe(Recipe recipe) {
+    public void insertRecipe(RecipeVO recipe) {
         // The service holds the destination category lock while assigning the next position.
-        recipes.insert(new RecipeRow(recipe.id(), recipe.categoryId(), recipe.name(), recipe.image(),
+        recipes.insert(new RecipeEntity(recipe.id(), recipe.categoryId(), recipe.name(), recipe.image(),
                 recipe.ingredients(), recipe.steps(), recipes.nextPosition(recipe.categoryId())));
     }
 
-    public void updateRecipe(Recipe recipe, String previousCategoryId) {
+    public void updateRecipe(RecipeVO recipe, String previousCategoryId) {
         boolean moved = !previousCategoryId.equals(recipe.categoryId());
         String categoryId = moved ? recipe.categoryId() : null;
         Long sortOrder = moved ? recipes.nextPosition(categoryId) : null;
         // MyBatis-Plus omits null fields, preserving the count and the position of a recipe edited in place.
-        recipes.updateById(new RecipeRow(recipe.id(), categoryId, recipe.name(), recipe.image(), recipe.ingredients(),
+        recipes.updateById(new RecipeEntity(recipe.id(), categoryId, recipe.name(), recipe.image(), recipe.ingredients(),
                 recipe.steps(), sortOrder));
     }
 

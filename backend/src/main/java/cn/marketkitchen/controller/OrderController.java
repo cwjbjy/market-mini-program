@@ -1,8 +1,8 @@
 package cn.marketkitchen.controller;
 
-import cn.marketkitchen.domain.Order;
 import cn.marketkitchen.dto.OrderDtos.SubmitOrder;
 import cn.marketkitchen.service.OrderService;
+import cn.marketkitchen.vo.OrderVO;
 import cn.marketkitchen.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -24,13 +24,13 @@ public class OrderController {
     private final OrderService orders;
 
     @GetMapping
-    public ApiResponse<List<Order>> list() {
+    public ApiResponse<List<OrderVO>> list() {
         return ApiResponse.success(orders.recentOrders());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<Order> submit(@Valid @RequestBody SubmitOrder input) {
+    public ApiResponse<OrderVO> submit(@Valid @RequestBody SubmitOrder input) {
         return ApiResponse.success(orders.submit(input));
     }
 
