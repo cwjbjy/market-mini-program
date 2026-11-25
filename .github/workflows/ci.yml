@@ -2,7 +2,6 @@ name: Backend release
 
 on:
   pull_request:
-  workflow_dispatch:
   push:
     # Build and deploy only when a tag is pushed; ordinary branch pushes skip CI.
     tags: ['**']
@@ -20,7 +19,7 @@ env:
 
 jobs:
   verify:
-    if: github.event_name != 'push' || github.event.deleted == false
+    if: github.event_name == 'pull_request' || github.event.deleted == false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -42,87 +41,37 @@ jobs:
         run: mvn -B -ntp verify
 
   build-and-push:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.deleted == false)
+    if: github.event_name == 'push' && github.event.deleted == false
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Select image tag
-        id: image
-        shell: bash
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
-            tag="diagnostic-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          else
-            tag=$GITHUB_REF_NAME
-          fi
-          printf 'ref=%s:%s\n' "$ACR_IMAGE" "$tag" >> "$GITHUB_OUTPUT"
-      - name: Build and load backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64
-          load: true
-          tags: ${{ steps.image.outputs.ref }}
-          provenance: false
-          sbom: false
-          cache-from: type=gha,scope=market-kitchen
-          cache-to: type=gha,mode=max,scope=market-kitchen
-      - name: Check ACR connection
-        shell: bash
-        run: |
-          curl --silent --show-error --output /dev/null --connect-timeout 8 --max-time 15 \
-            --write-out 'ACR /v2/ HTTP %{http_code} DNS %{time_namelookup}s TCP %{time_connect}s TLS %{time_appconnect}s total %{time_total}s\n' \
-            "https://$ACR_REGISTRY/v2/" || true
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.ACR_REGISTRY }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
       - name: Push backend image to ACR
-        id: push
-        shell: bash
-        env:
-          IMAGE_REF: ${{ steps.image.outputs.ref }}
-        run: |
-          docker image inspect --format 'Image {{.Id}} ({{.Size}} bytes)' "$IMAGE_REF"
-
-          push_image() {
-            local ref=$1 attempt status
-            for attempt in 1 2; do
-              echo "Push $ref (attempt $attempt/2, timeout 5 minutes)"
-              if timeout --kill-after=10s 5m docker push "$ref"; then
-                return 0
-              else
-                status=$?
-              fi
-              echo "docker push exited with status $status"
-              if [[ "$attempt" == 1 ]]; then
-                sleep 5
-              fi
-            done
-            return "$status"
-          }
-
-          push_image "$IMAGE_REF"
-          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
-            sha_ref="$ACR_IMAGE:sha-$GITHUB_SHA"
-            docker tag "$IMAGE_REF" "$sha_ref"
-            push_image "$sha_ref"
-          fi
-
-          digest=$(timeout --kill-after=5s 45s docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$IMAGE_REF")
-          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
-          echo "ACR confirmed $IMAGE_REF@$digest"
-          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.ACR_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.ACR_IMAGE }}:${{ github.ref_name }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=market-kitchen
+          cache-to: type=gha,mode=max,scope=market-kitchen
 
   deploy:
-    if: github.event_name == 'push'
     needs: build-and-push
     runs-on: ubuntu-24.04
     timeout-minutes: 15

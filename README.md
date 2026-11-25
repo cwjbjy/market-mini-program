@@ -77,8 +77,6 @@ docker build -t market-kitchen:local .
 
 推送 tag 时，CI 使用 GitHub runner 预装的 MySQL 执行后端测试。测试通过后构建 `linux/amd64` Java 后端镜像，以 `<tag>` 和 `sha-<提交 SHA>` 标记并推送到杭州 ACR 的 `node_caowj/market-kitchen` 仓库。普通分支推送不触发 CI，PR 只运行测试。生产发布通过 SSH 在 `/opt/market-kitchen` 拉取并更新后端镜像，复用服务器已有的 `registry.cn-hangzhou.aliyuncs.com/node_caowj/mysql:latest`。家庭厨房拥有独立的 MySQL 容器和数据卷。新后端通过健康检查后记录本次镜像摘要，启动失败时尝试恢复上一版。
 
-排查镜像上传时，在 GitHub Actions 的 **Backend release** 工作流中选择 **Run workflow**，只发布一个 `diagnostic-<运行 ID>-<重试序号>` 镜像标签。查看 **Check ACR connection** 和 **Push backend image to ACR** 日志，即可分别看到连接耗时和各镜像层的上传或重试状态。手动运行到 ACR 推送结束为止。
-
 首次准备包括以下四步。
 
 1. 在阿里云 ACR 创建 `node_caowj/market-kitchen` 私有镜像仓库。
