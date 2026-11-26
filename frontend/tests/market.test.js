@@ -5,6 +5,7 @@ const cart = require('../lib/cart');
 const { filterCategories } = require('../lib/search');
 const cardGestures = require('../packages/catalog/sort/layout.wxs');
 const homeGestures = require('../pages/index/home-order.wxs');
+const wheel = require('../lib/wheel');
 
 test('search retains all categories for whitespace and matches partial names or one edit', () => {
   const categories = [
@@ -53,6 +54,196 @@ function mockHomePage() {
   page.renderCatalog();
   return page;
 }
+
+test('dinner wheel uses the latest visible order and includes the exact seven-day cutoff', () => {
+  const now = Date.parse('2026-11-25T12:00:00Z');
+  const dishes = ['never', 'week', 'old', 'latest', 'hidden'].map((id) => ({ id }));
+  const orders = [
+    { createdAt: '2026-11-18T12:00:00Z', items: [{ recipeId: 'week' }] },
+    { createdAt: '2026-11-18T11:59:59Z', items: [{ recipeId: 'old' }, { recipeId: 'latest' }] },
+    { createdAt: '2026-11-24T12:00:00Z', items: [{ recipeId: 'latest' }] },
+    { createdAt: '2026-11-25T12:00:00Z', deletedAt: '2026-11-25T12:00:00Z', items: [{ recipeId: 'hidden' }] },
+  ];
+  const { fresh, recent } = wheel.buildPools(dishes, wheel.lastEatenByRecipe(orders), now);
+  assert.deepEqual(fresh.map(({ id }) => id), ['hidden', 'never', 'old']);
+  assert.deepEqual(recent.map(({ id }) => id), ['week', 'latest']);
+});
+
+test('dinner wheel samples six fresh dishes and rotates through the oldest ordered backups', () => {
+  const recipes = (prefix, count) => Array.from({ length: count }, (_, index) => ({ id: prefix + index }));
+  const recentlyEaten = recipes('recent', 15);
+  const abundant = { fresh: recipes('fresh', 7), recent: recentlyEaten };
+  const first = wheel.sampleWheel(abundant, () => 0);
+  assert.deepEqual(first, abundant.fresh.slice(0, 6));
+  assert.equal(wheel.reshuffleWheel(abundant, first, () => 0)[5].id, 'fresh6');
+
+  const limited = { fresh: recipes('fresh', 1), recent: recentlyEaten };
+  let batch = wheel.sampleWheel(limited);
+  for (let offset = 0; offset < 15; offset += 5) {
+    assert.deepEqual(batch, [...limited.fresh, ...recentlyEaten.slice(offset, offset + 5)]);
+    batch = wheel.reshuffleWheel(limited, batch);
+  }
+  assert.deepEqual(batch, wheel.sampleWheel(limited));
+  for (let index = 0; index < wheel.SIZE; index += 1) assert.equal(wheel.winnerIndex(wheel.spinAngle(index)), index);
+});
+
+test('home dinner wheel prepares after the catalog loads and falls back when history is unavailable', async (t) => {
+  mockCartStorage();
+  const requests = [];
+  const notices = [];
+  let prepare;
+  t.mock.method(global, 'setTimeout', (callback) => { prepare = callback; });
+  const categories = [{ id: 'category', recipes: [{ id: 'recipe:one', name: '番茄炒蛋' }] }];
+  Object.assign(global.wx, {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    request: (request) => {
+      requests.push(request.url);
+      if (request.url.endsWith('/categories')) {
+        request.success({ statusCode: 200, data: { code: 0, data: categories } });
+      } else {
+        request.fail({ errMsg: 'timeout' });
+      }
+    },
+    showToast: ({ title }) => notices.push(title),
+  });
+  const page = mockPage('../pages/index/index');
+  page.onLoad();
+  await page.refreshCatalog();
+  assert.equal(page.data.loading, false);
+  assert.deepEqual(requests.map((url) => url.split('/').at(-1)), ['categories']);
+  page.openWheel();
+  assert.equal(page.data.wheelOpen, false);
+  await prepare();
+  assert.deepEqual(requests.map((url) => url.split('/').at(-1)), ['categories', 'orders']);
+  assert.equal(page.data.wheelReady, true);
+
+  page.setData({ submitting: true });
+  page.openWheel();
+  assert.equal(page.data.wheelOpen, false);
+  page.setData({ submitting: false });
+  page.openWheel();
+  assert.equal(requests.length, 2);
+  assert.equal(page.data.lastEatenUnavailable, true);
+  assert.equal(page.data.wheelItems.length, 1);
+  page.setData({ cartPending: true });
+  page.confirmWheelDish();
+  assert.equal(cart.read().items.length, 0);
+  page.setData({ cartPending: false });
+  page.confirmWheelDish();
+  page.confirmWheelDish();
+  assert.deepEqual(cart.read().items, [{ recipeId: 'recipe:one', quantity: 1 }]);
+  assert.equal(page.data.totalQuantity, 1);
+  assert.equal(page.data.wheelOpen, false);
+  assert.equal(notices[0], '已把「番茄炒蛋」加入购物车');
+});
+
+test('home dinner wheel can spin the same batch again and adds only the confirmed pointer result', async (t) => {
+  mockCartStorage();
+  Object.assign(global.wx, {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    request: (request) => request.success({ statusCode: 200, data: { code: 0, data: [] } }),
+    showToast: () => {},
+  });
+  const page = mockHomePage();
+  page.categories[0].recipes = Array.from({ length: 7 }, (_, index) => ({ id: `dish:${index}`, name: `菜品${index}` }));
+  let finish;
+  let now = Date.now();
+  t.mock.method(global, 'setTimeout', (callback) => { finish = callback; });
+  const random = t.mock.method(Math, 'random', () => 0.5);
+  t.mock.method(Date, 'now', () => now);
+  await page.prepareWheel();
+  page.openWheel();
+  page.setData({ wheelCanvasReady: true });
+  page.spinDinner();
+  const cancelled = finish;
+  page.closeWheel();
+  cancelled();
+  assert.deepEqual(cart.read().items, []);
+
+  page.openWheel();
+  page.setData({ wheelCanvasReady: true });
+  const expected = page.data.wheelItems[3].id;
+  const frames = [];
+  page.wheelSession.draw = (angle) => frames.push(angle);
+  page.confirmWheelDish();
+  assert.deepEqual(cart.read().items, []);
+  page.spinDinner();
+  const current = finish;
+  page.spinDinner();
+  page.confirmWheelDish();
+  assert.equal(finish, current);
+  now += 1000;
+  current();
+  assert.equal(frames[0], 0);
+  assert.ok(frames[1] > 0 && frames[1] < wheel.spinAngle(3));
+  assert.deepEqual(cart.read().items, []);
+  now += 2100;
+  finish();
+  finish();
+  assert.equal(frames.at(-1), wheel.spinAngle(3));
+  assert.equal(page.data.wheelSpinning, false);
+  assert.equal(page.data.wheelResult.id, expected);
+  assert.equal(page.data.wheelOpen, true);
+  assert.deepEqual(cart.read().items, []);
+
+  const batch = page.data.wheelItems;
+  const previousAngle = frames.at(-1);
+  random.mock.mockImplementation(() => 0.2);
+  page.spinDinner();
+  assert.equal(page.data.wheelSpinning, true);
+  assert.equal(frames.at(-1), previousAngle);
+  page.confirmWheelDish();
+  assert.deepEqual(cart.read().items, []);
+  now += 3100;
+  finish();
+  assert.ok(frames.at(-1) > previousAngle + 360);
+  assert.equal(wheel.winnerIndex(frames.at(-1)), 1);
+  assert.equal(page.data.wheelItems, batch);
+  assert.equal(page.data.wheelResult.id, batch[1].id);
+
+  page.confirmWheelDish();
+  page.confirmWheelDish();
+  assert.deepEqual(cart.read().items, [{ recipeId: batch[1].id, quantity: 1 }]);
+  assert.equal(page.data.wheelOpen, false);
+});
+
+test('home dinner wheel discards an unconfirmed result when the batch changes or the popup closes', async () => {
+  mockCartStorage();
+  Object.assign(global.wx, {
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    request: (request) => request.success({ statusCode: 200, data: { code: 0, data: [] } }),
+  });
+  const page = mockHomePage();
+  page.categories[0].recipes = Array.from({ length: 7 }, (_, index) => ({ id: `dish:${index}`, name: `菜品${index}` }));
+  await page.prepareWheel();
+  page.openWheel();
+  const original = page.data.wheelItems.map(({ id }) => id);
+  page.closeWheel();
+  page.openWheel();
+  assert.deepEqual(page.data.wheelItems.map(({ id }) => id), original);
+  page.setData({ wheelCanvasFailed: true });
+  page.spinDinner();
+  assert.ok(page.data.wheelResult);
+  assert.deepEqual(cart.read().items, []);
+
+  page.reshuffleDinner();
+  const shuffled = page.data.wheelItems.map(({ id }) => id);
+  assert.ok(shuffled.some((id) => !original.includes(id)));
+  assert.equal(page.data.wheelResult, null);
+  page.confirmWheelDish();
+  assert.deepEqual(cart.read().items, []);
+
+  page.setData({ wheelCanvasFailed: true });
+  page.spinDinner();
+  assert.ok(page.data.wheelResult);
+  page.onWheelVisibility({ detail: { visible: false } });
+  page.confirmWheelDish();
+  assert.equal(page.data.wheelOpen, false);
+  assert.equal(page.data.wheelResult, null);
+  assert.deepEqual(cart.read().items, []);
+  page.openWheel();
+  assert.deepEqual(page.data.wheelItems.map(({ id }) => id), shuffled);
+});
 
 function mockHomeOrder({ recipeViewportBottom = 420, deferMeasure = false } = {}) {
   mockCartStorage();

@@ -34,6 +34,9 @@
         <t-icon name="close-circle-filled" size="32rpx" aria-hidden="true" />
       </button>
     </view>
+    <button class="toolbar-dice" bindtap="openWheel" disabled="{{!wheelReady || !!homeDragKind || homeOrderSaving || submitting}}" aria-label="今晚吃什么转盘">
+      <text class="toolbar-dice__glyph" aria-hidden="true">🎲</text>
+    </button>
     <button class="toolbar-action toolbar-action--add" bindtap="createRecipe" disabled="{{!!homeDragKind || homeOrderSaving}}" aria-label="新建菜谱">
       <t-icon name="add" size="26rpx" aria-hidden="true" /><text>新建菜谱</text>
     </button>
@@ -146,6 +149,54 @@
       <view class="checkout-label"><text>{{cartPending ? '核对订单' : '去点单'}}</text></view>
     </button>
   </view>
+
+  <t-popup visible="{{wheelOpen}}" placement="bottom" using-custom-navbar close-on-overlay-click="{{!wheelSpinning}}"
+    custom-style="background-color: var(--paper); border-radius: 42rpx 42rpx 0 0;" bind:visible-change="onWheelVisibility">
+    <view class="wheel-sheet">
+      <view class="wheel-sheet__header">
+        <text class="wheel-sheet__title">今晚吃什么</text>
+        <text wx:if="{{wheelItems.length === 6}}" class="wheel-sheet__subtitle" role="status">{{wheelResult && !wheelSpinning ? wheelResult.name : ''}}</text>
+        <button class="icon-button wheel-sheet__close" bindtap="closeWheel" aria-label="关闭转盘">
+          <t-icon name="close" size="40rpx" aria-hidden="true" />
+        </button>
+      </view>
+
+      <view wx:if="{{!wheelItems.length}}" class="wheel-sheet__state">
+        {{wheelMenuUnavailable ? '菜谱暂不可用，请稍后重试' : '先创建一道菜谱，就能开始选菜'}}
+      </view>
+      <block wx:else>
+        <text wx:if="{{lastEatenUnavailable}}" class="wheel-sheet__notice">最近吃过记录暂不可用</text>
+        <view wx:if="{{wheelItems.length < 6}}" class="wheel-recommendation">
+          <image wx:if="{{wheelItems[wheelPick].imageUrl}}" class="wheel-recommendation__image"
+            src="{{wheelItems[wheelPick].imageUrl}}" mode="aspectFill" aria-hidden="true" />
+          <view class="wheel-recommendation__copy">
+            <text class="wheel-recommendation__title">今天就吃它</text>
+            <text class="wheel-recommendation__name">{{wheelItems[wheelPick].name}}</text>
+          </view>
+        </view>
+        <view wx:elif="{{wheelCanvasFailed}}" class="wheel-candidates" aria-label="{{wheelNames}}">
+          <text wx:for="{{wheelItems}}" wx:key="id" class="wheel-candidates__dish">{{item.name}}</text>
+        </view>
+        <view wx:else class="wheel-stage" role="img" aria-label="转盘候选菜品：{{wheelNames}}">
+          <canvas type="2d" id="dinner-wheel-canvas" class="wheel-disc__canvas" aria-hidden="true" />
+        </view>
+        <text wx:if="{{wheelItems.length > 1 && wheelItems.length < 6}}" class="wheel-sheet__note">候选 · {{wheelNames}}</text>
+
+        <view class="wheel-sheet__actions">
+          <button class="secondary wheel-sheet__shuffle" bindtap="reshuffleDinner" disabled="{{!wheelCanShuffle || wheelSpinning}}">
+            {{wheelItems.length < 6 ? '换一道' : '换一批'}}
+          </button>
+          <button wx:if="{{wheelItems.length === 6}}"
+            class="{{wheelResult ? 'secondary wheel-sheet__retry' : 'primary wheel-sheet__spin'}}" bindtap="spinDinner"
+            disabled="{{wheelSpinning || cartPending || submitting || (!wheelCanvasReady && !wheelCanvasFailed)}}">
+            {{wheelSpinning ? '转动中…' : wheelResult ? (wheelCanvasFailed ? '再选一次' : '再转一次') : (wheelCanvasFailed ? '帮我选' : '开始转')}}
+          </button>
+          <button wx:if="{{wheelResult || wheelItems.length < 6}}" class="primary wheel-sheet__spin"
+            bindtap="confirmWheelDish" disabled="{{wheelSpinning || cartPending || submitting}}">加入购物车</button>
+        </view>
+      </block>
+    </view>
+  </t-popup>
 
   <t-popup visible="{{cartOpen}}" placement="bottom" using-custom-navbar close-on-overlay-click="{{!submitting}}"
     bind:visible-change="onCartVisibility">

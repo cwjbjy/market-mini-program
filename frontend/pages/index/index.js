@@ -3,6 +3,15 @@ const cart = require('../../lib/cart');
 const { filterCategories } = require('../../lib/search');
 const { confirm, toast, showError, errorMessage } = require('../../lib/ui');
 const order = require('./home-order');
+const wheel = require('../../lib/wheel');
+const { createWheelRenderer } = require('./wheel-canvas');
+
+const SPIN_DURATION = 3100;
+const closedWheel = {
+  wheelOpen: false, wheelItems: [], wheelNames: '', wheelPick: 0,
+  wheelSpinning: false, wheelResult: null, wheelCanShuffle: false, wheelCanvasReady: false, wheelCanvasFailed: false,
+  lastEatenUnavailable: false, wheelMenuUnavailable: false,
+};
 
 Page({
   data: {
@@ -18,6 +27,8 @@ Page({
     loading: true,
     loadError: '',
     cartOpen: false,
+    wheelReady: false,
+    ...closedWheel,
     cartItems: [],
     totalQuantity: 0,
     cartPending: false,
@@ -46,11 +57,14 @@ Page({
   onHide() {
     this.homeHidden = true;
     order.cancel(this);
+    this.closeWheel();
   },
 
   onUnload() {
     clearTimeout(this.searchTimer);
+    clearTimeout(this.wheelPreparationTimer);
     this.unloaded = true;
+    this.closeWheel();
     this.sectionQuery = null;
     this.catalogJump = null;
     order.cancel(this);
@@ -60,6 +74,7 @@ Page({
     order.cancel(this);
     this.updateHeroTop();
     this.measureSections();
+    if (this.wheelSession && this.data.wheelItems.length === wheel.SIZE) this.paintWheel();
   },
 
   updateHeroTop() {
@@ -76,7 +91,13 @@ Page({
       await this.refreshTask;
     } finally {
       this.refreshTask = null;
-      if (!this.unloaded) this.setData({ loading: false, refreshing: false });
+      if (!this.unloaded) {
+        this.setData({ loading: false, refreshing: false }, () => {
+          if (this.unloaded || this.wheelPreparing) return;
+          clearTimeout(this.wheelPreparationTimer);
+          this.wheelPreparationTimer = setTimeout(() => this.prepareWheel(), 0);
+        });
+      }
     }
   },
 
@@ -338,8 +359,160 @@ Page({
     }
   },
 
+  async prepareWheel() {
+    if (this.unloaded || this.wheelPreparing) return;
+    let recipes = this.categories.flatMap((category) => category.recipes);
+    if (recipes.length && this.wheelLatest === undefined) {
+      this.wheelPreparing = true;
+      try {
+        this.wheelLatest = wheel.lastEatenByRecipe(await api.getOrders());
+      } catch {
+        this.wheelLatest = null;
+      } finally {
+        this.wheelPreparing = false;
+      }
+      if (this.unloaded) return;
+      recipes = this.categories.flatMap((category) => category.recipes);
+    }
+
+    const cached = this.wheelBatch;
+    const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+    const current = cached?.items.map(({ id }) => byId.get(id));
+    if (current?.length === Math.min(recipes.length, wheel.SIZE) && current.every(Boolean)) {
+      this.wheelBatch = { ...cached, items: current, recipeCount: recipes.length };
+    } else {
+      const pools = wheel.buildPools(recipes, this.wheelLatest || new Map());
+      const items = wheel.sampleWheel(pools);
+      const pick = items.length < wheel.SIZE && pools.fresh.length ? Math.floor(Math.random() * pools.fresh.length) : 0;
+      this.wheelBatch = { items, pick, recipeCount: recipes.length };
+    }
+    if (!this.data.wheelReady) this.setData({ wheelReady: true });
+  },
+
+  openWheel() {
+    const batch = this.wheelBatch;
+    if (!batch || this.homeDrag || this.data.homeOrderSaving || this.data.submitting || this.data.cartOpen || this.data.wheelOpen) return;
+    this.wheelSession = { angle: 0 };
+    this.showWheelBatch(batch, {
+      ...closedWheel,
+      wheelOpen: true,
+      lastEatenUnavailable: this.wheelLatest === null,
+      wheelMenuUnavailable: !this.catalogLoaded && Boolean(this.data.loadError),
+    });
+  },
+
+  closeWheel() {
+    this.wheelSession = null;
+    clearTimeout(this.wheelSpinTimer);
+    clearTimeout(this.wheelCanvasTimer);
+    if (this.data.wheelOpen && !this.unloaded) this.setData(closedWheel);
+  },
+
+  onWheelVisibility(event) {
+    if (!event.detail.visible) this.closeWheel();
+  },
+
+  showWheelBatch({ items, pick, recipeCount }, patch = {}) {
+    this.wheelSession.angle = 0;
+    this.setData({
+      ...patch,
+      wheelItems: items.map(({ id, name, image }) => ({ id, name, imageUrl: api.mediaUrl(image) })),
+      wheelNames: items.map(({ name }) => name).join('、'),
+      wheelPick: pick, wheelResult: null, wheelCanvasReady: false, wheelCanvasFailed: false,
+      wheelCanShuffle: items.length < wheel.SIZE ? items.length > 1 : recipeCount > wheel.SIZE,
+    }, () => {
+      if (items.length === wheel.SIZE) this.paintWheel();
+    });
+  },
+
+  paintWheel() {
+    const session = this.wheelSession;
+    if (!session || typeof this.createSelectorQuery !== 'function') return;
+    clearTimeout(this.wheelCanvasTimer);
+    const revision = {};
+    session.paint = revision;
+    const attempt = (remaining) => {
+      const query = this.createSelectorQuery();
+      query.select('#dinner-wheel-canvas').fields({ node: true, size: true });
+      query.exec(([result]) => {
+        if (this.wheelSession !== session || session.paint !== revision) return;
+        if (result?.node && result.width > 0) {
+          const ratio = Math.min(3, wx.getWindowInfo?.()?.pixelRatio || 1);
+          session.draw = createWheelRenderer(result.node, result.width, ratio, this.data.wheelItems);
+          session.draw?.(session.angle);
+          this.setData({ wheelCanvasReady: Boolean(session.draw), wheelCanvasFailed: !session.draw });
+        } else if (remaining) {
+          this.wheelCanvasTimer = setTimeout(() => attempt(remaining - 1), 65);
+        } else {
+          this.setData({ wheelCanvasFailed: true });
+        }
+      });
+    };
+    attempt(6);
+  },
+
+  reshuffleDinner() {
+    const { wheelItems, wheelPick, wheelCanShuffle, wheelSpinning } = this.data;
+    if (!this.wheelSession || !wheelCanShuffle || wheelSpinning) return;
+    if (wheelItems.length < wheel.SIZE) {
+      const pick = (wheelPick + 1) % wheelItems.length;
+      this.wheelBatch = { ...this.wheelBatch, pick };
+      this.setData({ wheelPick: pick });
+      return;
+    }
+    const recipes = this.categories.flatMap((category) => category.recipes);
+    const pools = wheel.buildPools(recipes, this.wheelLatest || new Map());
+    const items = wheel.reshuffleWheel(pools, wheelItems);
+    this.wheelBatch = { items, pick: 0, recipeCount: recipes.length };
+    this.showWheelBatch(this.wheelBatch);
+  },
+
+  spinDinner() {
+    const session = this.wheelSession;
+    const { wheelItems, wheelSpinning, wheelCanvasReady, wheelCanvasFailed, cartPending, submitting } = this.data;
+    if (!session || wheelItems.length !== wheel.SIZE || wheelSpinning || cartPending || submitting) return;
+    if (wheelCanvasFailed) {
+      this.setData({ wheelResult: wheelItems[Math.floor(Math.random() * wheel.SIZE)] });
+      return;
+    }
+    if (!wheelCanvasReady) return;
+    const startAngle = session.angle;
+    const angle = Math.floor(startAngle / 360) * 360 + wheel.spinAngle(Math.floor(Math.random() * wheel.SIZE));
+    this.setData({ wheelSpinning: true });
+    const started = Date.now();
+    const frame = () => {
+      if (this.wheelSession !== session || !this.data.wheelSpinning) return;
+      const progress = Math.max(0, Math.min(1, (Date.now() - started) / SPIN_DURATION));
+      session.angle = startAngle + (angle - startAngle) * (1 - (1 - progress) ** 3);
+      session.draw?.(session.angle);
+      if (progress === 1) this.setData({ wheelSpinning: false, wheelResult: wheelItems[wheel.winnerIndex(angle)] });
+      else this.wheelSpinTimer = setTimeout(frame, 16);
+    };
+    frame();
+  },
+
+  confirmWheelDish() {
+    const { wheelResult, wheelItems, wheelPick, wheelSpinning, cartPending, submitting } = this.data;
+    if (!this.wheelSession || wheelSpinning || cartPending || submitting) return;
+    const dish = wheelResult || (wheelItems.length < wheel.SIZE ? wheelItems[wheelPick] : null);
+    if (!dish) return;
+    const { id, name } = dish;
+    try {
+      if (!cart.adjustQuantity(id, 1)) {
+        toast('该菜数量已达上限');
+        return;
+      }
+    } catch (error) {
+      showError(error, '无法加入购物车');
+      return;
+    }
+    this.closeWheel();
+    this.renderCatalog();
+    toast('已把「' + name + '」加入购物车', 'success');
+  },
+
   openCart() {
-    if (!this.homeDrag && this.data.totalQuantity > 0) this.setData({ cartOpen: true });
+    if (!this.homeDrag && !this.data.wheelOpen && this.data.totalQuantity > 0) this.setData({ cartOpen: true });
   },
 
   closeCart() {
