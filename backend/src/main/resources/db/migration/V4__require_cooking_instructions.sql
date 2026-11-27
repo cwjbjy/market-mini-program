@@ -1,0 +1,2 @@
+ALTER TABLE recipes MODIFY COLUMN instructions JSON NOT NULL;
+ALTER TABLE order_items MODIFY COLUMN instructions JSON NOT NULL;

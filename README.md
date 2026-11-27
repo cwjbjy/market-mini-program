@@ -71,7 +71,11 @@ docker build -t market-kitchen:local .
 
 迁移脚本保存在 [db/migration](backend/src/main/resources/db/migration)。首次接入 Flyway 时，已有业务表的 `market_app` 会自动登记基线 `0`，再执行与旧版相同的幂等建表 SQL。全新数据库直接执行 `V1__initial_schema.sql`。按现有 tag 流程发布即可，由后端启动时完成迁移。
 
-后续表结构变更使用新的版本脚本，比如 `V2__add_order_remark.sql`。Flyway 在 `flyway_schema_history` 记录已经应用的版本。回滚后端镜像时，已经提交的 MySQL 表结构变更仍会保留。
+后续表结构变更使用新的版本脚本。Flyway 在 `flyway_schema_history` 记录已经应用的版本。回滚后端镜像时，已经提交的 MySQL 表结构变更仍会保留。
+
+制作步骤通过 Flyway V2–V4 升级。`recipes` 和 `order_items` 新增 `instructions` JSON，包含有序的 `steps` 和独立的 `tips`。回填会应用 22 道菜谱的整理结果，原文有变化的菜谱按实际原文转换。历史订单从各自的下单快照回填。旧 `steps` 列保留旧原文，供核对。
+
+切换版本前备份 MySQL，并在发布窗口部署新版 Java 服务和小程序。新版 Java 启动时会自动转换数据，菜谱编辑接口同步切换为 `instructions`。
 
 ### GitHub Actions 发布到阿里云
 
@@ -128,7 +132,9 @@ JSON 响应包含 `code`、`message`、`data`。成功的 `code` 为 0，失败�
 | `GET /api/recipes/{id}` | 读取菜谱详情 |
 | `POST /api/recipes`、`PUT /api/recipes/{id}`、`DELETE /api/recipes/{id}` | 管理菜谱，更新时可改变分类 |
 | `POST /api/images` | 上传 multipart 字段 `file`，返回 `{path}` |
-| `GET /api/orders`、`DELETE /api/orders/{id}` | 查看最近 50 条订单或删除指定订单 |
+| `GET /api/orders/page?cursor=...` | 分批查看订单，每批 15 条。首批省略游标，后续使用响应中的 `nextCursor` |
+| `GET /api/orders/{id}`、`DELETE /api/orders/{id}` | 查看或删除指定订单 |
+| `GET /api/orders` | 供旧版小程序查看最近 50 条订单 |
 | `POST /api/orders` | 提交 `{requestId,items:[{recipeId,quantity}]}` |
 
 订单保存下单时的菜名、配料、做法、图片和数量。同一次提交在超时重试时复用 `requestId`，每种菜谱只累计一次点单次数。删除菜谱、分类或换图后，历史订单仍使用原来的图片。

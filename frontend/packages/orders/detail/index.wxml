@@ -1,0 +1,43 @@
+<import src="../../../templates/cooking-instructions.wxml" />
+<view wx:if="{{order}}" class="screen order-detail">
+  <view class="panel order-summary">
+    <view class="order-summary__body">
+      <text class="order-summary__label">下单时间</text>
+      <text class="order-summary__date">{{order.date || '未记录'}}</text>
+      <text class="order-summary__count">{{order.items.length}} 道菜 · {{order.quantity}} 份</text>
+    </view>
+    <button class="shopping-entry" bindtap="openShopping" hover-class="shopping-entry--pressed">
+      <view class="shopping-entry__icon" aria-hidden="true">
+        <t-icon name="view-list" size="34rpx" />
+      </view>
+      <text class="shopping-entry__label">买菜清单</text>
+      <t-icon class="shopping-entry__arrow" name="chevron-right" size="32rpx" aria-hidden="true" />
+    </button>
+  </view>
+
+  <view wx:for="{{order.items}}" wx:key="rowKey" class="panel recipe-snapshot">
+    <view class="recipe-snapshot__head">
+      <view wx:if="{{item.imageUrl}}" class="image-placeholder recipe-snapshot__image" bindtap="showImage"
+        data-url="{{item.imageUrl}}" role="button" aria-label="查看{{item.name}}图片">
+        <image src="{{item.imageUrl}}" mode="aspectFill" lazy-load />
+      </view>
+      <view wx:else class="image-placeholder recipe-snapshot__image" aria-hidden="true"><t-icon name="image" size="36rpx" /></view>
+      <text class="recipe-snapshot__name">{{item.name}}</text>
+      <text class="recipe-snapshot__quantity">×{{item.quantity}}</text>
+    </view>
+    <view class="recipe-snapshot__section">
+      <text class="recipe-snapshot__label">食材配料</text>
+      <text class="recipe-snapshot__copy" selectable>{{item.ingredients || '暂无配料'}}</text>
+    </view>
+    <view class="recipe-snapshot__section">
+      <text class="recipe-snapshot__label">制作步骤</text>
+      <template is="cooking-instructions" data="{{instructions: item.instructions}}" />
+    </view>
+  </view>
+</view>
+<view wx:else class="screen state">
+  <text class="state__title">{{loading ? '正在加载订单' : loadError ? '加载失败' : '找不到这笔订单'}}</text>
+  <text wx:if="{{loadError}}" class="state__description">{{loadError}}</text>
+  <button wx:if="{{loadError}}" class="secondary" bindtap="loadDetail">重试</button>
+  <button wx:if="{{!loading}}" class="quiet" bindtap="backToOrders">返回订单</button>
+</view>

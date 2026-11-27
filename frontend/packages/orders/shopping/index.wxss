@@ -1,0 +1,30 @@
+.shopping-page { padding-bottom: calc(122rpx + env(safe-area-inset-bottom)); }
+.shopping-summary { padding: 27rpx 28rpx 24rpx; background: linear-gradient(120deg, var(--hero-light), var(--hero-shade)); }
+.shopping-summary__title { display: block; font-size: 52rpx; font-weight: 750; }
+.shopping-summary__date { display: block; margin-top: 4rpx; color: var(--muted); font-size: 25rpx; }
+.shopping-summary__stats { display: flex; justify-content: space-between; gap: 12rpx; margin: 23rpx 0 9rpx; color: var(--brand); font-size: 25rpx; font-weight: 650; }
+.shopping-notice { display: block; margin-top: 18rpx; padding: 13rpx 18rpx; border-radius: var(--field-radius); background: var(--accent-light); color: var(--accent); font-size: 24rpx; }
+.shopping-filters { display: flex; gap: 10rpx; margin: 12rpx 0; }
+button.shopping-filter {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 12rpx;
+  border: 1rpx solid transparent;
+  border-radius: 60rpx;
+  color: var(--muted);
+}
+button.shopping-filter--active { border-color: var(--line); background: var(--brand-light); color: var(--dark); font-weight: 700; }
+.shopping-list { overflow: hidden; }
+button.shopping-row { display: flex; align-items: center; gap: 18rpx; width: 100%; min-height: max(92rpx, 44px); padding: 16rpx 24rpx; text-align: left; }
+button.shopping-row + button.shopping-row { border-top: 1rpx solid var(--line); }
+.shopping-name { min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
+.shopping-check { position: relative; flex: none; width: 39rpx; height: 39rpx; border: 2rpx solid var(--line-strong); border-radius: 11rpx; }
+.shopping-row--checked .shopping-check { border-color: var(--brand); background: var(--brand); }
+.shopping-row--checked .shopping-check::after { content: ''; position: absolute; top: 28%; left: 24%; width: 45%; height: 24%; border: solid var(--on-brand); border-width: 0 0 3rpx 3rpx; transform: rotate(-45deg); }
+.shopping-row--checked .shopping-name { color: var(--muted); text-decoration: line-through; }
+.shopping-empty { color: var(--muted); }
+.shopping-footer { position: fixed; z-index: 1; right: 0; bottom: 0; left: 0; padding: 14rpx var(--gutter) calc(14rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid var(--line); background: var(--paper); }
+.shopping-footer button { min-height: max(84rpx, 44px); width: 100%; }

@@ -1,0 +1,41 @@
+<view wx:if="{{order}}" class="screen shopping-page">
+  <view class="panel shopping-summary">
+    <text class="shopping-summary__title">买菜清单</text>
+    <text class="shopping-summary__date">{{order.date || '当前订单'}} · {{order.items.length}} 道菜</text>
+    <view class="shopping-summary__stats">
+      <text>采购进度</text>
+      <text aria-live="polite">已买 {{bought}} / {{total}} 项</text>
+    </view>
+    <progress percent="{{progress}}" stroke-width="6" border-radius="6" activeColor="#3D5A3E" backgroundColor="#D5DFCE" aria-hidden="true" />
+  </view>
+
+  <text wx:if="{{hasUnclear}}" class="shopping-notice">部分配料无法识别，请返回订单详情查看原文。</text>
+
+  <view wx:if="{{total}}" class="shopping-filters" aria-label="筛选食材">
+    <button wx:for="{{filters}}" wx:key="id" class="shopping-filter {{filter === item.id ? 'shopping-filter--active' : ''}}"
+      data-filter="{{item.id}}" bindtap="selectFilter" aria-pressed="{{filter === item.id}}">
+      <text>{{item.name}}</text>
+    </button>
+  </view>
+
+  <view wx:if="{{visibleIngredients.length}}" class="panel shopping-list">
+    <button wx:for="{{visibleIngredients}}" wx:key="id" class="shopping-row {{item.checked ? 'shopping-row--checked' : ''}}"
+      data-id="{{item.id}}" bindtap="toggleIngredient" aria-role="checkbox" aria-checked="{{item.checked}}" aria-label="{{item.name}}">
+      <view class="shopping-check" aria-hidden="true"></view>
+      <text class="shopping-name">{{item.name}}</text>
+    </button>
+  </view>
+  <view wx:else class="state shopping-empty">
+    <text>{{!total ? '这笔订单暂无可列出的食材' : filter === 'done' ? '还没有勾选已买的食材' : '待买食材都买齐了'}}</text>
+  </view>
+
+  <view wx:if="{{total}}" class="shopping-footer">
+    <button class="primary" bindtap="copyRemaining" disabled="{{bought === total}}">复制待买清单</button>
+  </view>
+</view>
+<view wx:else class="screen state">
+  <text class="state__title">{{loading ? '正在加载订单' : loadError ? '加载失败' : '找不到这笔订单'}}</text>
+  <text wx:if="{{loadError}}" class="state__description">{{loadError}}</text>
+  <button wx:if="{{loadError}}" class="secondary" bindtap="loadChecklist">重试</button>
+  <button wx:if="{{!loading}}" class="quiet" bindtap="backToOrders">返回订单</button>
+</view>

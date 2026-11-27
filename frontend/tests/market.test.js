@@ -6,6 +6,7 @@ const { filterCategories } = require('../lib/search');
 const cardGestures = require('../packages/catalog/sort/layout.wxs');
 const homeGestures = require('../pages/index/home-order.wxs');
 const wheel = require('../lib/wheel');
+const orderHistory = require('../lib/order-history');
 
 test('search retains all categories for whitespace and matches partial names or one edit', () => {
   const categories = [
@@ -34,7 +35,12 @@ function mockPage(modulePath) {
   global.Page = (definition) => {
     page = { ...definition, data: structuredClone(definition.data) };
     page.setData = (patch, callback) => {
-      Object.assign(page.data, patch);
+      for (const [key, value] of Object.entries(patch)) {
+        const arrayPath = key.match(/^(\w+)\[(\d+)\](?:\.(\w+))?$/);
+        if (arrayPath?.[3]) page.data[arrayPath[1]][Number(arrayPath[2])][arrayPath[3]] = value;
+        else if (arrayPath) page.data[arrayPath[1]][Number(arrayPath[2])] = value;
+        else page.data[key] = value;
+      }
       if (callback) callback();
     };
   };
@@ -54,6 +60,279 @@ function mockHomePage() {
   page.renderCatalog();
   return page;
 }
+
+test('shopping ingredients remove recognizable amounts and keep unique names in order', () => {
+  const { buildIngredients } = require('../lib/ingredients');
+  assert.deepEqual(buildIngredients([
+    { ingredients: '鸡蛋 ３ 个，盐少许；西兰花（半颗）\n2瓣大蒜、Olive Oil 2.5ml' },
+    { ingredients: '鸡蛋、olive oil、五花肉 1/2斤、青椒 1～2 个、番茄2；' },
+    { ingredients: '' },
+  ]), {
+    ingredients: [
+      ['鸡蛋', '鸡蛋'], ['盐', '盐'], ['西兰花', '西兰花'], ['大蒜', '大蒜'],
+      ['olive oil', 'Olive Oil'], ['五花肉', '五花肉'], ['青椒', '青椒'],
+    ].map(([id, name]) => ({ id, name })),
+    hasUnclear: true,
+  });
+  assert.deepEqual(buildIngredients([{ ingredients: '、 ；\n' }, {}]), { ingredients: [], hasUnclear: false });
+  assert.deepEqual(buildIngredients([{ ingredients: '鸡腿（洗净，去骨，腌制）、鸡腿或鸡胸肉、洋葱' }]), {
+    ingredients: [{ id: '洋葱', name: '洋葱' }],
+    hasUnclear: true,
+  });
+});
+
+test('new recipe ingredients paste into rows, move preparation notes, and validate the saved list', async (t) => {
+  mockCartStorage();
+  Object.assign(global.wx, { setNavigationBarTitle() {}, showToast() {}, navigateBack() {} });
+  const form = { categoryId: 'main', name: '香煎鸡腿', image: '/uploads/example.png' };
+  t.mock.method(api, 'getCategories', async () => [{ id: 'main' }]);
+  const create = t.mock.method(api, 'createRecipe', async () => {});
+  const event = (value, id) => ({ detail: { value }, currentTarget: { dataset: { id } } });
+  const page = mockPage('../packages/catalog/recipe/editor');
+  page.onLoad({ categoryId: 'main' });
+  await page.loadForm();
+  page.setData({ form: { ...page.data.form, ...form } });
+  page.updateInstruction({ detail: { value: '煎熟' }, currentTarget: { dataset: { list: 'stepRows', index: 0 } } });
+  const first = page.data.ingredientRows[0].id;
+  page.updateIngredient(event('生抽 1 勺', first));
+  page.addIngredient();
+  const empty = page.data.ingredientRows.at(-1).id;
+  assert.equal(page.data.focusedIngredientId, empty);
+  page.blurIngredient(event('', empty));
+  assert.equal(page.data.focusedIngredientId, 0);
+  page.openPaste();
+  page.updatePasteText(event('鸡腿（洗净，去骨，再腌制）、鸡蛋 ３ 个；鸡腿或鸡胸肉\n生抽少许'));
+  page.importRows();
+  assert.equal(page.data.ingredientRows.length, 5);
+  assert.equal(page.data.pasteOpen, false);
+  assert.deepEqual(page.data.ingredientPreview.map(({ name }) => name), ['生抽', '鸡蛋']);
+  assert.equal(page.data.ingredientInvalidCount, 2);
+  await page.saveRecipe();
+  assert.match(page.data.formError, /修正/);
+  assert.equal(create.mock.callCount(), 0);
+
+  page.moveIngredientNote(event('', page.data.ingredientRows[1].id));
+  page.selectNoteDestination({ detail: { value: 2 } });
+  page.applyIngredientNote();
+  page.removeIngredient(event('', page.data.ingredientRows[3].id));
+  assert.equal(page.data.stepRows[0].text, '煎熟\n鸡腿：洗净，去骨，再腌制');
+  assert.deepEqual(page.data.ingredientPreview.map(({ name }) => name), ['生抽', '鸡腿', '鸡蛋']);
+  await page.saveRecipe();
+  assert.deepEqual(create.mock.calls[0].arguments, [{
+    ...form, ingredients: '生抽 1 勺、鸡腿、鸡蛋 ３ 个、生抽少许',
+    instructions: { steps: [{ id: 'step-1', text: '煎熟\n鸡腿：洗净，去骨，再腌制' }], tips: [] },
+  }]);
+});
+
+test('editing a legacy recipe preserves its untouched ingredients and validates changes against current limits', async (t) => {
+  mockCartStorage();
+  Object.assign(global.wx, { setNavigationBarTitle() {}, showToast() {}, navigateBack() {} });
+  const legacy = '鸡腿或者鸡胸肉，鸡蛋 3 个\n盐少许';
+  t.mock.method(api, 'getCategories', async () => [{ id: 'main' }]);
+  t.mock.method(api, 'getRecipe', async () => ({
+    categoryId: 'main', name: '鸡腿', ingredients: legacy, image: '/uploads/example.png',
+    instructions: { steps: [{ id: 'step-1', text: '煎熟' }], tips: [] },
+  }));
+  const update = t.mock.method(api, 'updateRecipe', async () => {});
+  const page = mockPage('../packages/catalog/recipe/editor');
+  page.onLoad({ recipeId: 'recipe:legacy' });
+  await page.loadForm();
+  assert.equal(page.data.legacyIngredients, true);
+  page.setData({ form: { ...page.data.form, name: '香煎鸡腿' } });
+  await page.saveRecipe();
+  assert.equal(update.mock.calls[0].arguments[1].ingredients, legacy);
+
+  const change = (index, value) => page.updateIngredient({ detail: { value }, currentTarget: { dataset: { id: page.data.ingredientRows[index].id } } });
+  change(0, '鸡腿（提前腌制）');
+  const showToast = t.mock.method(wx, 'showToast');
+  page.updateInstruction({ detail: { value: '煎'.repeat(500) }, currentTarget: { dataset: { list: 'stepRows', index: 0 } } });
+  page.moveIngredientNote({ currentTarget: { dataset: { id: page.data.ingredientRows[0].id } } });
+  page.selectNoteDestination({ detail: { value: 2 } });
+  page.applyIngredientNote();
+  assert.match(showToast.mock.calls[0].arguments[0].title, /不能超过/);
+  page.closeNoteDestination();
+  assert.equal(page.data.ingredientRows[0].value, '鸡腿（提前腌制）');
+  await page.saveRecipe();
+  assert.equal(update.mock.callCount(), 1);
+
+  change(0, '菜'.repeat(200));
+  await page.saveRecipe();
+  assert.match(page.data.formError, /200/);
+  assert.equal(update.mock.callCount(), 1);
+  change(0, '鸡腿 2 只');
+  await page.saveRecipe();
+  assert.equal(update.mock.calls[1].arguments[1].ingredients, '鸡腿 2 只、鸡蛋 3 个、盐少许');
+});
+
+test('recipe editor imports numbered steps, reorders by stable IDs and moves an ingredient note to tips', async (t) => {
+  mockCartStorage();
+  Object.assign(global.wx, { setNavigationBarTitle() {}, showToast() {}, navigateBack() {} });
+  t.mock.method(api, 'getCategories', async () => [{ id: 'main' }]);
+  const create = t.mock.method(api, 'createRecipe', async () => {});
+  const page = mockPage('../packages/catalog/recipe/editor');
+  page.onLoad({ categoryId: 'main' });
+  await page.loadForm();
+  page.setData({ form: { ...page.data.form, name: '花菜', image: '/uploads/example.png' } });
+  const event = (dataset, value) => ({ currentTarget: { dataset }, detail: { value } });
+  page.openPaste(event({ kind: 'steps' }));
+  page.updatePasteText(event({}, '1. 切花菜 2. 大火翻炒\n第三步：加入 1.5 勺生抽'));
+  page.importRows();
+  const [first, second, third] = page.data.stepRows;
+  assert.deepEqual([first.text, second.text, third.text], ['切花菜', '大火翻炒', '加入 1.5 勺生抽']);
+  page.moveInstruction(event({ index: 0, direction: 1 }));
+  assert.deepEqual(page.data.stepRows.map(({ id }) => id), [second.id, first.id, third.id]);
+  const id = page.data.ingredientRows[0].id;
+  page.updateIngredient(event({ id }, '线椒（可以用螺丝椒替换）'));
+  page.moveIngredientNote(event({ id }));
+  page.selectNoteDestination(event({}, 1));
+  page.applyIngredientNote();
+  await page.saveRecipe();
+  assert.deepEqual(create.mock.calls[0].arguments[0].instructions, {
+    steps: [second, first, third],
+    tips: ['线椒：可以用螺丝椒替换'],
+  });
+});
+
+test('shopping progress trims only the least recently opened records at the UTF-8 byte limit', (t) => {
+  const { loadProgress, saveProgress } = require('../lib/shopping-progress');
+  const key = 'market-shopping-progress-v1';
+  mockCartStorage();
+  cart.adjustQuantity('recipe:cart', 1);
+  const ingredient = '菜😀'.repeat(4100);
+  saveProgress('older', [ingredient], 1);
+  saveProgress('newer', [ingredient], 2);
+  t.mock.method(Date, 'now', () => 3);
+  assert.deepEqual(loadProgress('older'), [ingredient]);
+  const write = t.mock.method(wx, 'setStorageSync');
+  saveProgress('current', [ingredient], 4);
+  assert.equal(write.mock.callCount(), 1);
+  const stored = wx.getStorageSync(key);
+  assert.ok(Buffer.byteLength(stored, 'utf8') <= 64 * 1024);
+  assert.deepEqual(JSON.parse(stored).map(({ orderId }) => orderId), ['current', 'older']);
+  assert.throws(() => saveProgress('current', ['菜'.repeat(23000)]));
+  assert.equal(wx.getStorageSync(key), stored);
+  assert.deepEqual(cart.read().items, [{ recipeId: 'recipe:cart', quantity: 1 }]);
+});
+
+test('order list hands the original snapshot through detail and checklist and removes saved progress on deletion', async (t) => {
+  const { loadProgress } = require('../lib/shopping-progress');
+  mockCartStorage();
+  const order = { id: 'order:first', date: '2026-11-26', items: [
+    { name: '炒蛋', ingredients: '鸡蛋 3 个、西兰花', instructions: { steps: [{ id: 'a', text: '先炒鸡蛋' }], tips: [] }, quantity: 2 },
+  ] };
+  const other = { id: 'order:second', items: [{ ingredients: '鸡蛋、番茄' }] };
+  const listOrders = t.mock.method(api, 'getOrderPage', async () => ({ orders: [order, other], nextCursor: null }));
+  const getOrder = t.mock.method(api, 'getOrder', async (id) => {
+    const found = [order, other].find((entry) => entry.id === id);
+    if (found) return found;
+    throw Object.assign(new Error('订单不存在'), { status: 404, definitive: true });
+  });
+  const deleteOrder = t.mock.method(api, 'deleteOrder', async () => {});
+  const notices = [];
+  let url;
+  let copied;
+  Object.assign(global.wx, {
+    navigateTo: (options) => { url = options.url; },
+    showToast: ({ title }) => notices.push(title),
+    showModal: ({ success }) => success({ confirm: true }),
+    setClipboardData: ({ data }) => { copied = data; },
+  });
+  const event = (dataset) => ({ currentTarget: { dataset } });
+  const list = mockPage('../pages/order/order');
+  await list.loadOrders();
+  list.openOrder(event({ id: order.id }));
+  assert.equal(url, '/packages/orders/detail/index?orderId=order%3Afirst');
+  const detail = mockPage('../packages/orders/detail/index');
+  await detail.onLoad({ orderId: 'order%3Afirst' });
+  assert.equal(detail.data.order.items[0].instructions.steps[0].text, '先炒鸡蛋');
+  assert.equal(detail.data.order.quantity, 2);
+  detail.openShopping();
+  assert.equal(url, '/packages/orders/shopping/index?orderId=order%3Afirst');
+  const page = mockPage('../packages/orders/shopping/index');
+  await page.onLoad({ orderId: 'order%3Afirst' });
+  assert.equal(listOrders.mock.callCount(), 1);
+  assert.equal(getOrder.mock.callCount(), 0);
+  assert.deepEqual(page.data.visibleIngredients.map(({ name }) => name), ['鸡蛋', '西兰花']);
+  page.toggleIngredient(event({ id: '鸡蛋' }));
+  page.copyRemaining();
+  assert.equal(copied, '西兰花');
+  page.selectFilter(event({ filter: 'done' }));
+  assert.deepEqual(page.data.visibleIngredients.map(({ name }) => name), ['鸡蛋']);
+  const failingWrite = t.mock.method(wx, 'setStorageSync', () => { throw new Error('storage failure'); });
+  page.toggleIngredient(event({ id: '西兰花' }));
+  assert.equal(page.data.bought, 1);
+  assert.match(notices.at(-1), /保存失败/);
+  failingWrite.mock.restore();
+
+  const independent = mockPage('../packages/orders/shopping/index');
+  await independent.onLoad({ orderId: 'order%3Asecond' });
+  assert.deepEqual(getOrder.mock.calls[0].arguments, ['order:second']);
+  assert.equal(independent.data.bought, 0);
+  independent.toggleIngredient(event({ id: '番茄' }));
+  const reopened = mockPage('../packages/orders/shopping/index');
+  await reopened.onLoad({ orderId: 'order%3Afirst' });
+  assert.equal(reopened.data.bought, 1);
+  const missing = mockPage('../packages/orders/detail/index');
+  await missing.onLoad({ orderId: 'order%3Amissing' });
+  assert.equal(missing.data.order, null);
+  assert.equal(missing.data.loading, false);
+
+  await list.removeOrder(event({ id: order.id }));
+  assert.deepEqual(deleteOrder.mock.calls[0].arguments, [order.id]);
+  assert.deepEqual(loadProgress(order.id), []);
+  assert.deepEqual(loadProgress(other.id), ['番茄']);
+  assert.deepEqual(orderHistory.getLoadedOrders().map(({ id }) => id), [other.id]);
+});
+
+test('orders append on reach bottom, retry failed pages, and share loaded history with the wheel', async (t) => {
+  mockCartStorage();
+  t.after(() => orderHistory.setLoadedOrders(null));
+  orderHistory.setLoadedOrders(null);
+  const now = new Date().toISOString();
+  const first = { id: 'order:1', createdAt: now, items: [{ recipeId: 'dish:0', quantity: 1 }] };
+  const second = { id: 'order:2', createdAt: now, items: [{ recipeId: 'dish:1', quantity: 1 }] };
+  let fetchNext;
+  const fetchPage = t.mock.method(api, 'getOrderPage', async (cursor) => cursor
+    ? new Promise((resolve, reject) => { fetchNext = { resolve, reject }; })
+    : { orders: [first], nextCursor: first.id });
+  Object.assign(global.wx, { stopPullDownRefresh() {} });
+  const list = mockPage('../pages/order/order');
+  await list.loadOrders();
+
+  const loading = list.onReachBottom();
+  list.onReachBottom();
+  assert.equal(fetchPage.mock.callCount(), 2);
+  assert.equal(list.data.loadingMore, true);
+  fetchNext.reject(new Error('timeout'));
+  await loading;
+  assert.equal(list.data.moreError, 'timeout');
+  list.onReachBottom();
+  assert.equal(fetchPage.mock.callCount(), 2);
+  assert.deepEqual(list.data.orders.map(({ id }) => id), [first.id]);
+
+  const home = mockHomePage();
+  home.categories[0].recipes = Array.from({ length: 8 }, (_, index) => ({ id: 'dish:' + index, name: '菜品' + index }));
+  home.prepareWheel();
+  home.openWheel();
+  assert.equal(home.data.wheelHistoryUnloaded, false);
+  assert.ok(!home.data.wheelItems.some(({ id }) => id === 'dish:0'));
+  home.closeWheel();
+
+  const retry = list.loadMore();
+  fetchNext.resolve({ orders: [first, second], nextCursor: null });
+  await retry;
+  assert.deepEqual(list.data.orders.map(({ id }) => id), [first.id, second.id]);
+  assert.equal(list.data.nextCursor, null);
+  list.onShow();
+  list.onReachBottom();
+  home.openWheel();
+  assert.deepEqual(home.data.wheelItems.map(({ id }) => id).sort(), ['dish:2', 'dish:3', 'dish:4', 'dish:5', 'dish:6', 'dish:7']);
+  assert.equal(fetchPage.mock.callCount(), 3);
+
+  await list.onPullDownRefresh();
+  assert.deepEqual(list.data.orders.map(({ id }) => id), [first.id]);
+  assert.equal(list.data.nextCursor, first.id);
+});
 
 test('dinner wheel uses the latest visible order and includes the exact seven-day cutoff', () => {
   const now = Date.parse('2026-11-25T12:00:00Z');
@@ -87,8 +366,9 @@ test('dinner wheel samples six fresh dishes and rotates through the oldest order
   for (let index = 0; index < wheel.SIZE; index += 1) assert.equal(wheel.winnerIndex(wheel.spinAngle(index)), index);
 });
 
-test('home dinner wheel prepares after the catalog loads and falls back when history is unavailable', async (t) => {
+test('home dinner wheel prepares without an orders request when the order page has not loaded', async (t) => {
   mockCartStorage();
+  orderHistory.setLoadedOrders(null);
   const requests = [];
   const notices = [];
   let prepare;
@@ -113,8 +393,8 @@ test('home dinner wheel prepares after the catalog loads and falls back when his
   assert.deepEqual(requests.map((url) => url.split('/').at(-1)), ['categories']);
   page.openWheel();
   assert.equal(page.data.wheelOpen, false);
-  await prepare();
-  assert.deepEqual(requests.map((url) => url.split('/').at(-1)), ['categories', 'orders']);
+  prepare();
+  assert.deepEqual(requests.map((url) => url.split('/').at(-1)), ['categories']);
   assert.equal(page.data.wheelReady, true);
 
   page.setData({ submitting: true });
@@ -122,8 +402,8 @@ test('home dinner wheel prepares after the catalog loads and falls back when his
   assert.equal(page.data.wheelOpen, false);
   page.setData({ submitting: false });
   page.openWheel();
-  assert.equal(requests.length, 2);
-  assert.equal(page.data.lastEatenUnavailable, true);
+  assert.equal(requests.length, 1);
+  assert.equal(page.data.wheelHistoryUnloaded, true);
   assert.equal(page.data.wheelItems.length, 1);
   page.setData({ cartPending: true });
   page.confirmWheelDish();
@@ -498,12 +778,13 @@ test('request handles HTTP 201, preserves ambiguous failure, and validates HTTP 
   response = { statusCode: 404, data: { code: 404, message: '菜谱不存在' } };
   await assert.rejects(api.getRecipe('invalid'), { message: '菜谱不存在', status: 404, definitive: true });
   response = { statusCode: 404, data: '<html>Gateway error</html>' };
-  await assert.rejects(api.getOrders(), { status: 404, definitive: false });
+  await assert.rejects(api.getOrderPage('order:test'), { status: 404, definitive: false });
+  assert.equal(requests.at(-1).url, 'http://127.0.0.1:8080/api/orders/page?cursor=order%3Atest');
   response = { statusCode: 200, data: { code: 1, message: '操作失败' } };
   await assert.rejects(api.getCategories(), { message: '操作失败', status: 200, definitive: false });
 
   global.wx.request = (options) => options.fail({ errMsg: 'timeout' });
-  await assert.rejects(api.getOrders(), /网络连接失败/);
+  await assert.rejects(api.getOrderPage(), /网络连接失败/);
 });
 
 test('upload parses multipart response and normalizes image paths separately from API paths', async () => {

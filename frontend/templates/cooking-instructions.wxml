@@ -1,0 +1,15 @@
+<template name="cooking-instructions">
+  <view wx:if="{{instructions.steps.length}}" class="cooking-steps">
+    <view wx:for="{{instructions.steps}}" wx:key="id" class="cooking-step">
+      <text class="cooking-step__number" aria-label="第 {{index + 1}} 步">{{index + 1}}</text>
+      <text class="cooking-step__text" selectable>{{item.text}}</text>
+    </view>
+  </view>
+  <text wx:else class="cooking-step__empty">暂无步骤</text>
+  <view wx:if="{{instructions.tips.length}}" class="cooking-tips">
+    <text class="cooking-tips__title">小贴士</text>
+    <block wx:for="{{instructions.tips}}" wx:for-item="tip">
+      <text class="cooking-tips__text" selectable>{{tip}}</text>
+    </block>
+  </view>
+</template>

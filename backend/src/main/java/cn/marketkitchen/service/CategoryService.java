@@ -9,6 +9,7 @@ import cn.marketkitchen.image.ImageReference;
 import cn.marketkitchen.repository.CategoryRepository;
 import cn.marketkitchen.vo.CategoryVO;
 import cn.marketkitchen.vo.RecipeVO;
+import cn.marketkitchen.vo.CookingInstructions;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
@@ -122,8 +123,14 @@ public class CategoryService {
     }
 
     private static RecipeVO recipeFromInput(String id, SaveRecipe input) {
+        var instructions = input.instructions();
+        var steps = instructions.steps().stream()
+                .map(step -> new CookingInstructions.Step(step.id().strip(), step.text().strip())).toList();
+        if (steps.stream().map(CookingInstructions.Step::id).distinct().count() != steps.size()) {
+            throw BusinessException.badRequest("制作步骤标识不能重复");
+        }
         return new RecipeVO(id, input.categoryId(), input.name().strip(), ImageReference.validate(input.image()),
-                input.ingredients().strip(), input.steps().strip(), 0);
+                input.ingredients().strip(), new CookingInstructions(steps, instructions.tips().stream().map(String::strip).toList()), 0);
     }
 
     private static <T> T require(T value, String message) {

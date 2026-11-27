@@ -1,8 +1,8 @@
 ## 1. 数据层：每道菜最后食用时间
 
 - [x] 1.1 在 `frontend/lib/wheel.js` 新增 `lastEatenByRecipe(orders)`：遍历未隐藏订单的 `items[].recipeId` 与 `createdAt`，聚合每道菜 `lastEaten = max(createdAt)`，从未出现的菜无记录（对应 spec"候选池构建"、design D6）
-- [x] 1.2 首页菜单渲染后在后台读取 `api.getOrders()` 并预计算候选名单。关闭重开复用名单，点「换一批」后缓存新名单（design D6）。
-- [x] 1.3 订单请求失败时标记 `lastEatenUnavailable`，供降级使用（对应 spec"订单数据加载失败降级"）
+- [x] 1.2 首页菜单渲染后用订单页已加载的记录预计算候选名单。记录影响近 7 天候选范围时更新名单。关闭重开复用名单，点「换一批」缓存新名单。
+- [x] 1.3 订单页尚未成功加载时使用全部菜谱作为候选并提示。
 
 ## 2. 抽样逻辑（纯函数，便于单测）
 
@@ -41,8 +41,7 @@
 - [x] 6.3 微信开发者工具模拟器与前端测试验证：入口禁用规则、弹窗开合、6 格可读、旋转抽中、指针固定、极小/空菜单降级
 - [x] 6.4 后端 `mvnw -o test-compile` 确认未受影响（本任务默认纯前端，不改后端）
 
-## 7. 可选升级：后端统计接口（仅当 LIMIT 50 精度不足时）
+## 7. 订单页触底加载
 
-- [ ] 7.1 `OrderMapper` 新增只读查询：`order_items JOIN orders` 按 `recipe_id` 取 `MAX(created_at)`，`deleted_at IS NULL`（design D6 升级路径；**读时计算，不在 recipes 上加 last_eaten_at 字段**，见 D6 否决的备选）
-- [ ] 7.2 `OrderRepository`/`OrderController` 暴露 `GET /api/recipes/last-eaten`，返回 `{recipeId: lastEaten}`
-- [ ] 7.3 前端 `wheel.js` 数据源切换为该接口，移除 LIMIT 50 依赖；补后端测试
+- [x] 7.1 新增每批 15 条的订单分页接口及按 ID 读取订单详情的接口。
+- [x] 7.2 订单列表触底追加、下拉刷新和底部重试。转盘复用当前已加载记录。

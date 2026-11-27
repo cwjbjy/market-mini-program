@@ -6,20 +6,22 @@
 </view>
 
 <view wx:else class="screen editor">
-  <view class="editor-photo">
-    <view class="editor-photo__head">
-      <text class="form-label">菜谱图片</text>
-      <button wx:if="{{localImage || imageUrl}}" class="secondary photo-replace" bindtap="selectPhoto" disabled="{{saving}}">更换图片</button>
-    </view>
-    <view wx:if="{{localImage || imageUrl}}" class="photo image-placeholder" bindtap="showPhoto" role="button" aria-label="预览菜谱图片">
+  <view class="panel editor-photo">
+    <button wx:if="{{localImage || imageUrl}}" class="photo image-placeholder" bindtap="showPhoto" aria-label="预览菜谱图片">
       <t-icon name="image" size="48rpx" aria-hidden="true" />
       <image src="{{localImage || imageUrl}}" mode="aspectFill" />
-    </view>
-    <button wx:else class="photo photo--choose" bindtap="selectPhoto" disabled="{{saving}}">
-      <view class="photo__symbol"><t-icon name="image" size="52rpx" aria-hidden="true" /></view>
-      <text class="photo__label">选择图片</text>
-      <text class="photo__hint">JPG / PNG，最多 10 MB</text>
     </button>
+    <button wx:else class="photo photo--choose" bindtap="selectPhoto" disabled="{{saving}}" aria-label="选择菜谱图片">
+      <t-icon name="image" size="58rpx" aria-hidden="true" />
+    </button>
+    <view class="editor-photo__body">
+      <text class="editor-photo__title">菜谱图片</text>
+      <text class="editor-photo__hint">{{localImage || imageUrl ? '点击缩略图预览' : 'JPG / PNG，最多 10 MB'}}</text>
+      <button class="secondary photo-replace" bindtap="selectPhoto" disabled="{{saving}}" hover-class="photo-replace--pressed">
+        <t-icon name="image" size="30rpx" aria-hidden="true" />
+        <text>{{localImage || imageUrl ? '更换图片' : '选择图片'}}</text>
+      </button>
+    </view>
   </view>
 
   <view class="editor-panel panel editor-fields">
@@ -28,15 +30,78 @@
       <input class="field" value="{{form.name}}" maxlength="80" data-field="name" aria-label="菜名"
         disabled="{{saving}}" bindinput="updateInput" placeholder="输入菜名" />
     </view>
-    <view>
-      <text class="form-label">食材配料</text>
-      <textarea class="field field--area" value="{{form.ingredients}}" maxlength="200" data-field="ingredients" aria-label="食材配料"
-        disabled="{{saving}}" bindinput="updateInput" placeholder="例如 鸡蛋、番茄、葱花" />
+    <view class="ingredient-editor">
+      <view class="ingredient-heading">
+        <text class="form-label">食材配料</text>
+        <button class="secondary ingredient-paste-button" bindtap="openPaste" disabled="{{saving}}">批量粘贴</button>
+      </view>
+      <text class="ingredient-hint">一行写一种食材，可以保留用量。</text>
+      <view wx:for="{{ingredientRows}}" wx:key="id" class="ingredient-row">
+        <view class="ingredient-row__input">
+          <input class="field {{item.invalid ? 'ingredient-field--invalid' : ''}}" value="{{item.value}}" maxlength="200"
+            data-id="{{item.id}}" aria-label="第 {{index + 1}} 项食材及用量" disabled="{{saving}}" focus="{{focusedIngredientId === item.id}}"
+            bindinput="updateIngredient" bindblur="blurIngredient" placeholder="例如 鸡蛋 3 个" />
+          <button class="icon-button ingredient-remove" data-id="{{item.id}}" bindtap="removeIngredient"
+            aria-label="删除第 {{index + 1}} 项食材" disabled="{{saving}}">
+            <t-icon name="close" size="34rpx" aria-hidden="true" />
+          </button>
+        </view>
+        <view wx:if="{{item.invalid}}" class="ingredient-feedback">
+          <text>{{item.hint}}</text>
+          <button wx:if="{{item.moveNote}}" class="quiet ingredient-note" data-id="{{item.id}}" bindtap="moveIngredientNote" disabled="{{saving}}">移动说明</button>
+        </view>
+      </view>
+      <button class="secondary ingredient-add" bindtap="addIngredient" disabled="{{saving}}">
+        <t-icon name="add" size="32rpx" aria-hidden="true" /><text>添加食材</text>
+      </button>
+      <view class="ingredient-preview">
+        <view class="ingredient-preview__heading">
+          <text>买菜清单预览</text>
+          <text class="ingredient-counter {{ingredientLength > 200 ? 'ingredient-counter--over' : ''}}">{{ingredientLength}} / 200</text>
+        </view>
+        <view wx:if="{{ingredientPreview.length}}" class="ingredient-preview__items">
+          <text wx:for="{{ingredientPreview}}" wx:key="id" class="ingredient-chip">{{item.name}}</text>
+        </view>
+        <text wx:if="{{ingredientInvalidCount}}" class="ingredient-hint ingredient-hint--pending" aria-live="polite">
+          {{ingredientInvalidCount}} 行待确认。{{legacyIngredients ? '只修改菜名、图片等信息时会保留原配料。' : '修正后会加入预览。'}}
+        </text>
+        <text wx:elif="{{!ingredientPreview.length}}" class="ingredient-hint">添加食材后会在这里预览。</text>
+      </view>
     </view>
-    <view>
-      <text class="form-label">制作步骤</text>
-      <textarea class="field field--area field--steps" value="{{form.steps}}" maxlength="500" data-field="steps" aria-label="制作步骤"
-        disabled="{{saving}}" bindinput="updateInput" placeholder="写下制作过程" />
+    <view class="instruction-editor">
+      <view class="ingredient-heading">
+        <text class="form-label">制作步骤</text>
+        <button class="secondary ingredient-paste-button" data-kind="steps" bindtap="openPaste" disabled="{{saving}}">批量粘贴</button>
+      </view>
+      <text class="ingredient-hint">按做菜顺序填写，每步可写火候、时间和完成状态。</text>
+      <view wx:for="{{stepRows}}" wx:key="id" class="instruction-draft">
+        <view class="instruction-draft__head">
+          <text class="instruction-draft__number">第 {{index + 1}} 步</text>
+          <button class="icon-button" data-index="{{index}}" data-direction="{{-1}}" bindtap="moveInstruction"
+            aria-label="上移第 {{index + 1}} 步" disabled="{{saving || index === 0}}"><t-icon name="chevron-up" size="32rpx" aria-hidden="true" /></button>
+          <button class="icon-button" data-index="{{index}}" data-direction="{{1}}" bindtap="moveInstruction"
+            aria-label="下移第 {{index + 1}} 步" disabled="{{saving || index === stepRows.length - 1}}"><t-icon name="chevron-down" size="32rpx" aria-hidden="true" /></button>
+          <button class="icon-button" data-list="stepRows" data-index="{{index}}" bindtap="removeInstruction"
+            aria-label="删除第 {{index + 1}} 步" disabled="{{saving}}"><t-icon name="close" size="30rpx" aria-hidden="true" /></button>
+        </view>
+        <textarea class="field field--area instruction-input" value="{{item.text}}" maxlength="500" auto-height
+          data-list="stepRows" data-index="{{index}}" aria-label="第 {{index + 1}} 步做法" disabled="{{saving}}" bindinput="updateInstruction" placeholder="写下这一步的做法" />
+      </view>
+      <button class="secondary ingredient-add" data-list="stepRows" bindtap="addInstruction" disabled="{{saving}}">
+        <t-icon name="add" size="32rpx" aria-hidden="true" /><text>添加一步</text>
+      </button>
+    </view>
+    <view class="instruction-editor">
+      <text class="form-label">小贴士</text>
+      <view wx:for="{{tipRows}}" wx:key="id" class="instruction-tip">
+        <textarea class="field field--area instruction-input" value="{{item.text}}" maxlength="500" auto-height
+          data-list="tipRows" data-index="{{index}}" aria-label="第 {{index + 1}} 条小贴士" disabled="{{saving}}" bindinput="updateInstruction" placeholder="例如 线椒也可以用螺丝椒替换" />
+        <button class="icon-button" data-list="tipRows" data-index="{{index}}" bindtap="removeInstruction"
+          aria-label="删除第 {{index + 1}} 条小贴士" disabled="{{saving}}"><t-icon name="close" size="30rpx" aria-hidden="true" /></button>
+      </view>
+      <button class="secondary ingredient-add" data-list="tipRows" bindtap="addInstruction" disabled="{{saving}}">
+        <t-icon name="add" size="32rpx" aria-hidden="true" /><text>添加小贴士</text>
+      </button>
     </view>
     <view>
       <text class="form-label">所属分类</text>
@@ -55,4 +120,34 @@
     <text wx:if="{{formError}}" class="form-error" aria-live="polite">{{formError}}</text>
     <button class="primary" loading="{{saving}}" disabled="{{saving || !categories.length}}" bindtap="saveRecipe">保存菜谱</button>
   </view>
+
+  <t-popup visible="{{pasteOpen}}" placement="center" bind:visible-change="onPasteVisibility" custom-style="border-radius: 22rpx; overflow: hidden;">
+    <view class="ingredient-paste">
+      <text class="form-label">{{pasteKind === 'steps' ? '批量粘贴步骤' : '批量粘贴食材'}}</text>
+      <text class="ingredient-hint">{{pasteKind === 'steps' ? '按换行或步骤编号拆分，追加到已有步骤后。' : '用逗号、顿号、分号或换行分隔，拆分后追加到下方清单。'}}</text>
+      <textarea wx:if="{{pasteOpen}}" value="{{pasteText}}" bindinput="updatePasteText" class="field field--area ingredient-paste__field"
+        maxlength="{{pasteKind === 'steps' ? -1 : 1000}}" aria-label="{{pasteKind === 'steps' ? '待导入步骤' : '待导入配料'}}"
+        placeholder="{{pasteKind === 'steps' ? '粘贴做法，每步一行' : '例如 鸡蛋 3 个、盐少许、生抽 1 勺'}}" />
+      <view class="ingredient-paste__actions">
+        <button class="secondary" bindtap="closePaste">取消</button>
+        <button class="primary" bindtap="importRows">{{pasteKind === 'steps' ? '导入步骤' : '拆成多行'}}</button>
+      </view>
+    </view>
+  </t-popup>
+  <t-popup visible="{{!!noteDestination}}" placement="center" bind:visible-change="onNoteVisibility"
+    custom-style="border-radius: 22rpx; overflow: hidden;">
+    <view wx:if="{{noteDestination}}" class="ingredient-paste">
+      <text class="form-label">处理配料说明</text>
+      <picker range="{{noteDestination.choices}}" value="{{noteDestination.index}}" bindchange="selectNoteDestination">
+        <view class="field field--picker" role="button">
+          <text>{{noteDestination.choices[noteDestination.index]}}</text>
+          <t-icon name="chevron-down" size="32rpx" aria-hidden="true" />
+        </view>
+      </picker>
+      <view class="ingredient-paste__actions">
+        <button class="secondary" bindtap="closeNoteDestination">取消</button>
+        <button class="primary" bindtap="applyIngredientNote">移入</button>
+      </view>
+    </view>
+  </t-popup>
 </view>

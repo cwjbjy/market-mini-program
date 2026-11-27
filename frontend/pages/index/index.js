@@ -4,13 +4,14 @@ const { filterCategories } = require('../../lib/search');
 const { confirm, toast, showError, errorMessage } = require('../../lib/ui');
 const order = require('./home-order');
 const wheel = require('../../lib/wheel');
+const history = require('../../lib/order-history');
 const { createWheelRenderer } = require('./wheel-canvas');
 
 const SPIN_DURATION = 3100;
 const closedWheel = {
   wheelOpen: false, wheelItems: [], wheelNames: '', wheelPick: 0,
   wheelSpinning: false, wheelResult: null, wheelCanShuffle: false, wheelCanvasReady: false, wheelCanvasFailed: false,
-  lastEatenUnavailable: false, wheelMenuUnavailable: false,
+  wheelHistoryUnloaded: false, wheelMenuUnavailable: false,
 };
 
 Page({
@@ -51,6 +52,7 @@ Page({
       return;
     }
     this.renderCatalog();
+    if (this.wheelBatch) this.prepareWheel();
     this.refreshCatalog();
   },
 
@@ -93,7 +95,7 @@ Page({
       this.refreshTask = null;
       if (!this.unloaded) {
         this.setData({ loading: false, refreshing: false }, () => {
-          if (this.unloaded || this.wheelPreparing) return;
+          if (this.unloaded) return;
           clearTimeout(this.wheelPreparationTimer);
           this.wheelPreparationTimer = setTimeout(() => this.prepareWheel(), 0);
         });
@@ -359,44 +361,39 @@ Page({
     }
   },
 
-  async prepareWheel() {
-    if (this.unloaded || this.wheelPreparing) return;
-    let recipes = this.categories.flatMap((category) => category.recipes);
-    if (recipes.length && this.wheelLatest === undefined) {
-      this.wheelPreparing = true;
-      try {
-        this.wheelLatest = wheel.lastEatenByRecipe(await api.getOrders());
-      } catch {
-        this.wheelLatest = null;
-      } finally {
-        this.wheelPreparing = false;
-      }
-      if (this.unloaded) return;
-      recipes = this.categories.flatMap((category) => category.recipes);
+  prepareWheel() {
+    if (this.unloaded) return;
+    const orders = history.getLoadedOrders();
+    if (this.wheelOrders !== orders) {
+      this.wheelOrders = orders;
+      this.wheelLatest = wheel.lastEatenByRecipe(orders || []);
     }
-
+    const recipes = this.categories.flatMap((category) => category.recipes);
+    const pools = wheel.buildPools(recipes, this.wheelLatest);
+    const recentKey = JSON.stringify(pools.recent.map(({ id }) => id));
     const cached = this.wheelBatch;
     const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
     const current = cached?.items.map(({ id }) => byId.get(id));
-    if (current?.length === Math.min(recipes.length, wheel.SIZE) && current.every(Boolean)) {
+    if (recentKey === this.wheelRecentKey && current?.length === Math.min(recipes.length, wheel.SIZE) && current.every(Boolean)) {
       this.wheelBatch = { ...cached, items: current, recipeCount: recipes.length };
     } else {
-      const pools = wheel.buildPools(recipes, this.wheelLatest || new Map());
       const items = wheel.sampleWheel(pools);
       const pick = items.length < wheel.SIZE && pools.fresh.length ? Math.floor(Math.random() * pools.fresh.length) : 0;
       this.wheelBatch = { items, pick, recipeCount: recipes.length };
+      this.wheelRecentKey = recentKey;
     }
     if (!this.data.wheelReady) this.setData({ wheelReady: true });
   },
 
   openWheel() {
+    if (!this.wheelBatch || this.homeDrag || this.data.homeOrderSaving || this.data.submitting || this.data.cartOpen || this.data.wheelOpen) return;
+    if (this.wheelOrders !== history.getLoadedOrders()) this.prepareWheel();
     const batch = this.wheelBatch;
-    if (!batch || this.homeDrag || this.data.homeOrderSaving || this.data.submitting || this.data.cartOpen || this.data.wheelOpen) return;
     this.wheelSession = { angle: 0 };
     this.showWheelBatch(batch, {
       ...closedWheel,
       wheelOpen: true,
-      lastEatenUnavailable: this.wheelLatest === null,
+      wheelHistoryUnloaded: this.wheelOrders === null,
       wheelMenuUnavailable: !this.catalogLoaded && Boolean(this.data.loadError),
     });
   },
@@ -551,6 +548,7 @@ Page({
       order = cart.prepareOrder();
       this.renderCatalog();
       await api.createOrder(order);
+      history.invalidate();
       cart.acceptOrder(order.requestId);
       this.renderCatalog();
       wx.switchTab({ url: '/pages/order/order' });

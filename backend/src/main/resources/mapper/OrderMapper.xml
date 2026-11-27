@@ -8,7 +8,8 @@
             <arg column="name" javaType="string"/>
             <arg column="image" javaType="string"/>
             <arg column="ingredients" javaType="string"/>
-            <arg column="steps" javaType="string"/>
+            <arg column="instructions" javaType="cn.marketkitchen.vo.CookingInstructions"
+                 typeHandler="cn.marketkitchen.mapper.CookingInstructionsTypeHandler"/>
             <arg column="quantity" javaType="_int"/>
         </constructor>
     </resultMap>
@@ -22,15 +23,26 @@
 
     <sql id="orderColumns">
         o.id, o.display_date, o.created_at, i.line_number AS item_line_number, i.recipe_id AS item_recipe_id,
-        i.name AS item_name, i.image AS item_image, i.ingredients AS item_ingredients, i.steps AS item_steps,
+        i.name AS item_name, i.image AS item_image, i.ingredients AS item_ingredients, i.instructions AS item_instructions,
         i.quantity AS item_quantity
     </sql>
 
-    <select id="recentWithItems" resultMap="orderWithItems" resultOrdered="true">
+    <select id="pageWithItems" resultMap="orderWithItems" resultOrdered="true">
         SELECT <include refid="orderColumns"/>
         FROM (
             SELECT id, display_date, created_at FROM orders WHERE deleted_at IS NULL
-            ORDER BY created_at DESC, id DESC LIMIT 50
+            <if test="cursor != null">
+                <choose>
+                    <when test="cursor.createdAt != null">
+                        AND (created_at &lt; #{cursor.createdAt} OR created_at IS NULL
+                            OR (created_at = #{cursor.createdAt} AND id &lt; #{cursor.id}))
+                    </when>
+                    <otherwise>
+                        AND created_at IS NULL AND id &lt; #{cursor.id}
+                    </otherwise>
+                </choose>
+            </if>
+            ORDER BY created_at DESC, id DESC LIMIT #{limit}
         ) o
         LEFT JOIN order_items i ON i.order_id = o.id
         ORDER BY o.created_at DESC, o.id DESC, i.line_number
@@ -40,15 +52,16 @@
         SELECT <include refid="orderColumns"/>
         FROM orders o LEFT JOIN order_items i ON i.order_id = o.id
         WHERE o.id = #{id}
+        <if test="visibleOnly">AND o.deleted_at IS NULL</if>
         ORDER BY i.line_number
     </select>
 
     <insert id="insertItems">
-        INSERT INTO order_items (order_id, line_number, recipe_id, name, image, ingredients, steps, quantity)
+        INSERT INTO order_items (order_id, line_number, recipe_id, name, image, ingredients, instructions, quantity)
         VALUES
         <foreach collection="items" item="item" index="lineNumber" separator=",">
             (#{orderId}, #{lineNumber}, #{item.recipeId}, #{item.name}, #{item.image}, #{item.ingredients},
-             #{item.steps}, #{item.quantity})
+             #{item.instructions,typeHandler=cn.marketkitchen.mapper.CookingInstructionsTypeHandler}, #{item.quantity})
         </foreach>
     </insert>
 </mapper>

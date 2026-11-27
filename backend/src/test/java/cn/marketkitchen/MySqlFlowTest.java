@@ -12,12 +12,14 @@ import cn.marketkitchen.exception.BusinessException;
 import cn.marketkitchen.service.CategoryService;
 import cn.marketkitchen.service.OrderService;
 import cn.marketkitchen.vo.CategoryVO;
+import cn.marketkitchen.vo.CookingInstructions;
 import cn.marketkitchen.vo.OrderVO;
 import cn.marketkitchen.vo.RecipeVO;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -83,21 +85,22 @@ class MySqlFlowTest {
         String id = "fedcba9876543210fedcba98";
         db.update("INSERT INTO categories (id, name, image) VALUES (?, ?, ?)", categoryId, "旧分类", IMAGE);
         db.update("""
-                INSERT INTO recipes (id, category_id, name, image, ingredients, steps, order_count, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, id, categoryId, "旧菜谱", IMAGE, "旧配料", "旧做法", 3, 1);
+                INSERT INTO recipes (id, category_id, name, image, ingredients, instructions, order_count, sort_order)
+                VALUES (?, ?, ?, ?, ?, JSON_OBJECT('steps', JSON_ARRAY(JSON_OBJECT('id', 'step-1', 'text', '旧做法')),
+                    'tips', JSON_ARRAY()), 3, 1)
+                """, id, categoryId, "旧菜谱", IMAGE, "旧配料");
         var target = categoryService.createCategory(new SaveCategory("新分类", IMAGE));
-        var existing = categoryService.createRecipe(new SaveRecipe(target.id(), "已有菜谱", IMAGE, "豆腐", "清蒸"));
+        var existing = categoryService.createRecipe(new SaveRecipe(target.id(), "已有菜谱", IMAGE, "豆腐", instructions("清蒸")));
 
         assertThat(categoryService.recipe(id).ingredients()).isEqualTo("旧配料");
-        var edit = categoryService.updateRecipe(id, new SaveRecipe(categoryId, "已编辑", IMAGE, "豆腐", "清蒸"));
+        var edit = categoryService.updateRecipe(id, new SaveRecipe(categoryId, "已编辑", IMAGE, "豆腐", instructions("清蒸")));
         assertThat(edit.name()).isEqualTo("已编辑");
-        assertThatThrownBy(() -> categoryService.updateRecipe(id, new SaveRecipe("missing", "不能移动", IMAGE, "豆腐", "清蒸")))
+        assertThatThrownBy(() -> categoryService.updateRecipe(id, new SaveRecipe("missing", "不能移动", IMAGE, "豆腐", instructions("清蒸"))))
                 .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.NOT_FOUND));
         assertThat(categoryService.recipe(id)).isEqualTo(edit);
 
         var moved = categoryService.updateRecipe(id, new SaveRecipe(target.id(), "已移动", "/static/images/market/new.jpg",
-                "豆腐", "清蒸"));
+                "豆腐", instructions("清蒸")));
         assertThat(moved.categoryId()).isEqualTo(target.id());
         assertThat(moved.image()).endsWith("new.jpg");
         assertThat(moved.orderCount()).isEqualTo(3);
@@ -133,9 +136,9 @@ class MySqlFlowTest {
     void reordersRecipesOnlyWithinTheSelectedCategory() {
         var firstCategory = categoryService.createCategory(new SaveCategory("热菜", IMAGE));
         var secondCategory = categoryService.createCategory(new SaveCategory("凉菜", IMAGE));
-        var first = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "豆腐", IMAGE, "豆腐", "煎"));
-        var second = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "青菜", IMAGE, "青菜", "炒"));
-        var other = categoryService.createRecipe(new SaveRecipe(secondCategory.id(), "黄瓜", IMAGE, "黄瓜", "凉拌"));
+        var first = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "豆腐", IMAGE, "豆腐", instructions("煎")));
+        var second = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "青菜", IMAGE, "青菜", instructions("炒")));
+        var other = categoryService.createRecipe(new SaveRecipe(secondCategory.id(), "黄瓜", IMAGE, "黄瓜", instructions("凉拌")));
         var original = List.of(first.id(), second.id());
 
         assertThatThrownBy(() -> categoryService.reorderRecipes(firstCategory.id(), new SortOrder(
@@ -147,7 +150,7 @@ class MySqlFlowTest {
         assertThat(categoryService.categories().get(0).recipes()).containsExactly(first, second);
 
         categoryService.reorderRecipes(firstCategory.id(), new SortOrder(List.of(second.id(), first.id()), original));
-        var added = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "蘑菇", IMAGE, "蘑菇", "炒"));
+        var added = categoryService.createRecipe(new SaveRecipe(firstCategory.id(), "蘑菇", IMAGE, "蘑菇", instructions("炒")));
         var menu = categoryService.categories();
         assertThat(menu.get(0).recipes()).extracting(RecipeVO::id).containsExactly(second.id(), first.id(), added.id());
         assertThat(menu.get(1).recipes()).containsExactly(other);
@@ -156,7 +159,7 @@ class MySqlFlowTest {
     @Test
     void checkoutIsAtomicAndItsSnapshotAndIdempotencySurviveDeletion() {
         var category = categoryService.createCategory(new SaveCategory("热菜", IMAGE));
-        var recipe = categoryService.createRecipe(new SaveRecipe(category.id(), "菜谱", IMAGE, "豆腐", "煎熟"));
+        var recipe = categoryService.createRecipe(new SaveRecipe(category.id(), "菜谱", IMAGE, "豆腐", instructions("煎熟")));
         var invalid = new SubmitOrder("rollback", List.of(new SubmitItem(recipe.id(), 3), new SubmitItem("missing", 1)));
         assertThatThrownBy(() -> orders.submit(invalid)).isInstanceOf(BusinessException.class);
         assertThat(categoryService.recipe(recipe.id()).orderCount()).isZero();
@@ -183,7 +186,7 @@ class MySqlFlowTest {
     @Test
     void concurrentDuplicateSubmissionsCountAsOneOrder() throws Exception {
         var category = categoryService.createCategory(new SaveCategory("热菜", IMAGE));
-        var recipe = categoryService.createRecipe(new SaveRecipe(category.id(), "菜谱", IMAGE, "豆腐", "煎熟"));
+        var recipe = categoryService.createRecipe(new SaveRecipe(category.id(), "菜谱", IMAGE, "豆腐", instructions("煎熟")));
         var request = new SubmitOrder("concurrent", List.of(new SubmitItem(recipe.id(), 2)));
 
         var executor = Executors.newFixedThreadPool(4);
@@ -207,8 +210,8 @@ class MySqlFlowTest {
     @Test
     void concurrentOrdersLockSharedRecipesAndKeepEachOrdersItemSequence() throws Exception {
         var category = categoryService.createCategory(new SaveCategory("热菜", IMAGE));
-        var first = categoryService.createRecipe(new SaveRecipe(category.id(), "第一道", IMAGE, "豆腐", "煎熟"));
-        var second = categoryService.createRecipe(new SaveRecipe(category.id(), "第二道", IMAGE, "青菜", "炒熟"));
+        var first = categoryService.createRecipe(new SaveRecipe(category.id(), "第一道", IMAGE, "豆腐", instructions("煎熟")));
+        var second = categoryService.createRecipe(new SaveRecipe(category.id(), "第二道", IMAGE, "青菜", instructions("炒熟")));
         var firstItem = new SubmitItem(first.id(), 1);
         var secondItem = new SubmitItem(second.id(), 2);
         var executor = Executors.newFixedThreadPool(2);
@@ -230,22 +233,53 @@ class MySqlFlowTest {
     }
 
     @Test
-    void onlyReturnsTheFiftyMostRecentHistoricalOrders() {
+    void pagesHistoricalOrdersPastTheLegacyLimitAndHandlesTieAndNullTimestamps() {
         Instant start = Instant.parse("2026-01-01T00:00:00Z");
+        var orderRows = new ArrayList<Object>();
         for (int i = 0; i < 53; i++) {
-            String id = "legacy-" + i;
-            db.update("INSERT INTO orders (id, display_date, created_at) VALUES (?, ?, ?)",
-                    id, "", LocalDateTime.ofInstant(start.plusSeconds(i), ZoneOffset.UTC));
-            db.update("""
-                    INSERT INTO order_items (order_id, line_number, recipe_id, name, image, ingredients, steps, quantity)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, id, 0, "old", "旧菜品", IMAGE, "", "", 2);
+            orderRows.add("legacy-" + i);
+            orderRows.add("");
+            orderRows.add(LocalDateTime.ofInstant(start.plusSeconds(i), ZoneOffset.UTC));
         }
+        db.update("INSERT INTO orders (id, display_date, created_at) VALUES "
+                + String.join(", ", Collections.nCopies(53, "(?, ?, ?)")), orderRows.toArray());
+        db.update("""
+                INSERT INTO order_items (order_id, line_number, recipe_id, name, image, ingredients, instructions, quantity)
+                SELECT id, 0, 'old', '旧菜品', ?, '', JSON_OBJECT('steps', JSON_ARRAY(), 'tips', JSON_ARRAY()), 2 FROM orders
+                """, IMAGE);
         List<OrderVO> page = orders.recentOrders();
         assertThat(page).hasSize(50);
         assertThat(page.get(0).id()).isEqualTo("legacy-52");
         assertThat(page.get(49).id()).isEqualTo("legacy-3");
         assertThat(page.get(0).items().get(0).recipeId()).isEqualTo("old");
         assertThat(page.get(0).date()).isEqualTo("2026-01-01 08:00:52");
+
+        db.update("UPDATE orders SET created_at = ? WHERE id = 'legacy-38'",
+                LocalDateTime.ofInstant(start.plusSeconds(39), ZoneOffset.UTC));
+        db.update("UPDATE orders SET created_at = NULL WHERE id IN ('legacy-2', 'legacy-1', 'legacy-0')");
+        var first = orders.page(null);
+        assertThat(first.orders()).hasSize(15);
+        assertThat(first.nextCursor()).isEqualTo("legacy-38");
+        orders.delete(first.nextCursor());
+        var second = orders.page(first.nextCursor());
+        assertThat(second.orders()).hasSize(15);
+        assertThat(second.orders().get(0).id()).isEqualTo("legacy-37");
+        var third = orders.page(second.nextCursor());
+        assertThat(third.orders()).hasSize(15);
+        var last = orders.page(third.nextCursor());
+        assertThat(last.orders()).hasSize(8);
+        assertThat(last.orders().subList(5, 8)).extracting(OrderVO::id)
+                .containsExactly("legacy-2", "legacy-1", "legacy-0");
+        assertThat(last.nextCursor()).isNull();
+        assertThat(orders.page("legacy-2").orders()).extracting(OrderVO::id).containsExactly("legacy-1", "legacy-0");
+        assertThat(orders.detail("legacy-0").items()).hasSize(1);
+        assertThatThrownBy(() -> orders.detail(first.nextCursor()))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> orders.page("missing"))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
+    private static CookingInstructions instructions(String text) {
+        return new CookingInstructions(List.of(new CookingInstructions.Step("step-1", text)), List.of());
+    }
+
 }

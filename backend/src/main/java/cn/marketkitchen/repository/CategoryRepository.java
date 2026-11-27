@@ -96,7 +96,7 @@ public class CategoryRepository {
     public void insertRecipe(RecipeVO recipe) {
         // The service holds the destination category lock while assigning the next position.
         recipes.insert(new RecipeEntity(recipe.id(), recipe.categoryId(), recipe.name(), recipe.image(),
-                recipe.ingredients(), recipe.steps(), recipes.nextPosition(recipe.categoryId())));
+                recipe.ingredients(), recipe.instructions(), recipes.nextPosition(recipe.categoryId())));
     }
 
     public void updateRecipe(RecipeVO recipe, String previousCategoryId) {
@@ -105,7 +105,7 @@ public class CategoryRepository {
         Long sortOrder = moved ? recipes.nextPosition(categoryId) : null;
         // MyBatis-Plus omits null fields, preserving the count and the position of a recipe edited in place.
         recipes.updateById(new RecipeEntity(recipe.id(), categoryId, recipe.name(), recipe.image(), recipe.ingredients(),
-                recipe.steps(), sortOrder));
+                recipe.instructions(), sortOrder));
     }
 
     public boolean deleteRecipe(String id) {

@@ -1,3 +1,4 @@
+<import src="../../../templates/cooking-instructions.wxml" />
 <view wx:if="{{recipe}}" class="recipe-detail">
   <view class="recipe-hero image-placeholder" bindtap="showImage" role="button" aria-label="查看菜谱图片">
     <t-icon name="image" size="72rpx" aria-hidden="true" />
@@ -24,7 +25,7 @@
         <view class="recipe-section__icon"><t-icon name="edit" size="34rpx" /></view>
         <text>制作步骤</text>
       </view>
-      <text class="recipe-text" selectable>{{recipe.steps || '暂无步骤'}}</text>
+      <template is="cooking-instructions" data="{{instructions: recipe.instructions}}" />
     </view>
   </view>
   <view class="recipe-footer">

@@ -14,5 +14,7 @@ public record OrderVO(String id, String date, Instant createdAt, List<Item> item
         return DISPLAY_DATE.format(instant);
     }
 
-    public record Item(String recipeId, String name, String image, String ingredients, String steps, int quantity) {}
+    public record Item(String recipeId, String name, String image, String ingredients, CookingInstructions instructions, int quantity) {}
+
+    public record Page(List<OrderVO> orders, String nextCursor) {}
 }

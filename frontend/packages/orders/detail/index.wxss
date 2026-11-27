@@ -1,0 +1,41 @@
+@import "../../../templates/cooking-instructions.wxss";
+
+.order-detail { display: flex; flex-direction: column; gap: 20rpx; }
+.order-summary { overflow: hidden; }
+.order-summary__body { padding: 28rpx; background: linear-gradient(120deg, var(--hero-light), var(--hero-shade)); }
+.order-summary__label, .order-summary__count { display: block; color: var(--muted); font-size: 25rpx; }
+.order-summary__date { display: block; margin: 6rpx 0 10rpx; font-size: 36rpx; font-weight: 750; overflow-wrap: anywhere; }
+button.shopping-entry {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  min-height: max(100rpx, 48px);
+  margin: 0;
+  padding: 12rpx 28rpx;
+  border-top: 1rpx solid var(--line);
+  background: var(--surface);
+  color: var(--brand);
+  text-align: left;
+}
+button.shopping-entry--pressed { background: var(--field); }
+.shopping-entry__icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: var(--field-radius);
+  background: var(--brand-light);
+}
+.shopping-entry__label { flex: 1; font-size: 29rpx; font-weight: 650; }
+.shopping-entry__arrow { flex: none; color: var(--muted); }
+.recipe-snapshot { padding: 23rpx; }
+.recipe-snapshot__head { display: flex; align-items: center; gap: 18rpx; }
+.recipe-snapshot__image { flex: none; width: 108rpx; height: 108rpx; border-radius: var(--field-radius); }
+.recipe-snapshot__name { flex: 1; min-width: 0; font-size: 34rpx; font-weight: 700; overflow-wrap: anywhere; }
+.recipe-snapshot__quantity { color: var(--brand); font-weight: 700; }
+.recipe-snapshot__section { margin-top: 20rpx; padding-top: 16rpx; border-top: 1rpx solid var(--line); }
+.recipe-snapshot__label { display: block; margin-bottom: 5rpx; font-weight: 650; }
+.recipe-snapshot__copy { color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }

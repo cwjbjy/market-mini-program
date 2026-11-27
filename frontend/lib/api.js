@@ -105,7 +105,8 @@ module.exports = {
   createRecipe: (data) => request('/recipes', 'POST', data),
   updateRecipe: (id, data) => request(withId('/recipes', id), 'PUT', data),
   deleteRecipe: (id) => request(withId('/recipes', id), 'DELETE'),
-  getOrders: () => request('/orders'),
+  getOrderPage: (cursor = '') => request('/orders/page' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : '')),
+  getOrder: (id) => request(withId('/orders', id)),
   createOrder: (data) => request('/orders', 'POST', data),
   deleteOrder: (id) => request(withId('/orders', id), 'DELETE'),
 };

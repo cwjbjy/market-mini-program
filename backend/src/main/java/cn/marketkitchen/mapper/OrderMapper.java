@@ -9,9 +9,9 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 
 public interface OrderMapper extends BaseMapper<OrderEntity> {
-    List<OrderEntity> recentWithItems();
+    List<OrderEntity> pageWithItems(@Param("limit") int limit, @Param("cursor") OrderEntity cursor);
 
-    OrderEntity findWithItems(@Param("id") String id);
+    OrderEntity findWithItems(@Param("id") String id, @Param("visibleOnly") boolean visibleOnly);
 
     void insertItems(@Param("orderId") String orderId, @Param("items") List<OrderVO.Item> items);
 

@@ -21,12 +21,23 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+    private static final int PAGE_SIZE = 15;
     private final CategoryRepository categoryRepository;
     private final OrderRepository orderRepository;
     private final TransactionTemplate transactions;
 
     public List<OrderVO> recentOrders() {
         return orderRepository.recentOrders();
+    }
+
+    public OrderVO.Page page(String cursor) {
+        return orderRepository.page(cursor, PAGE_SIZE);
+    }
+
+    public OrderVO detail(String id) {
+        OrderVO order = orderRepository.findVisible(id);
+        if (order == null) throw BusinessException.notFound("订单不存在");
+        return order;
     }
 
     public OrderVO submit(SubmitOrder input) {
@@ -52,7 +63,7 @@ public class OrderService {
                 var items = quantities.entrySet().stream().map(selection -> {
                     RecipeVO recipe = recipes.get(selection.getKey());
                     return new OrderVO.Item(recipe.id(), recipe.name(), recipe.image(), recipe.ingredients(),
-                            recipe.steps(), selection.getValue());
+                            recipe.instructions(), selection.getValue());
                 }).toList();
                 var order = new OrderVO(id, date, now, items);
                 orderRepository.insertItems(order);

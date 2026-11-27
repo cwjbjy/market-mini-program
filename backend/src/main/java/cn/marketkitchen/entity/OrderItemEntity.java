@@ -1,10 +1,11 @@
 package cn.marketkitchen.entity;
 
 import cn.marketkitchen.vo.OrderVO;
+import cn.marketkitchen.vo.CookingInstructions;
 
 public record OrderItemEntity(int lineNumber, String recipeId, String name, String image, String ingredients,
-                           String steps, int quantity) {
+                           CookingInstructions instructions, int quantity) {
     public OrderVO.Item toItem() {
-        return new OrderVO.Item(recipeId, name, image, ingredients, steps, quantity);
+        return new OrderVO.Item(recipeId, name, image, ingredients, instructions, quantity);
     }
 }

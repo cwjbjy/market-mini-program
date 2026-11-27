@@ -7,13 +7,13 @@
         <result property="name" column="name"/>
         <result property="image" column="image"/>
         <result property="ingredients" column="ingredients"/>
-        <result property="steps" column="steps"/>
+        <result property="instructions" column="instructions" typeHandler="cn.marketkitchen.mapper.CookingInstructionsTypeHandler"/>
         <result property="orderCount" column="order_count"/>
         <result property="sortOrder" column="sort_order"/>
     </resultMap>
 
     <sql id="recipeSelect">
-        SELECT id, category_id, name, image, ingredients, steps, order_count, sort_order FROM recipes
+        SELECT id, category_id, name, image, ingredients, instructions, order_count, sort_order FROM recipes
     </sql>
 
     <sql id="recipeIds">

@@ -2,6 +2,7 @@ const api = require('../../../lib/api');
 const cart = require('../../../lib/cart');
 const { errorMessage, showError, toast } = require('../../../lib/ui');
 const { previewImage } = require('../../../lib/images');
+const { splitIngredients } = require('../../../lib/ingredients');
 
 Page({
   data: { recipe: null, ingredients: [], loading: true, loadError: '' },
@@ -23,7 +24,7 @@ Page({
     this.setData({ loading: true, loadError: '' });
     try {
       const recipe = await api.getRecipe(this.recipeId);
-      const ingredients = (recipe.ingredients || '').split(/[,，、。\s]+/).filter(Boolean);
+      const ingredients = splitIngredients(recipe.ingredients || '');
       this.setData({
         recipe: { ...recipe, imageUrl: api.mediaUrl(recipe.image) },
         ingredients: ingredients.map((label, index) => ({ label, id: index })),

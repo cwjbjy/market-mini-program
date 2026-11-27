@@ -1,3 +1,5 @@
+@import "../../../templates/cooking-instructions.wxss";
+
 .recipe-detail {
   padding-bottom: 128rpx;
   padding-bottom: calc(128rpx + env(safe-area-inset-bottom));

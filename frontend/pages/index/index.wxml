@@ -165,7 +165,7 @@
         {{wheelMenuUnavailable ? '菜谱暂不可用，请稍后重试' : '先创建一道菜谱，就能开始选菜'}}
       </view>
       <block wx:else>
-        <text wx:if="{{lastEatenUnavailable}}" class="wheel-sheet__notice">最近吃过记录暂不可用</text>
+        <text wx:if="{{wheelHistoryUnloaded}}" class="wheel-sheet__notice">还未加载订单记录，当前从全部菜谱中抽选</text>
         <view wx:if="{{wheelItems.length < 6}}" class="wheel-recommendation">
           <image wx:if="{{wheelItems[wheelPick].imageUrl}}" class="wheel-recommendation__image"
             src="{{wheelItems[wheelPick].imageUrl}}" mode="aspectFill" aria-hidden="true" />

@@ -1,0 +1,21 @@
+.cooking-steps { display: flex; flex-direction: column; gap: 18rpx; }
+.cooking-step { display: flex; align-items: flex-start; gap: 14rpx; }
+.cooking-step__number {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40rpx;
+  height: 40rpx;
+  margin-top: 2rpx;
+  border-radius: 13rpx;
+  background: var(--brand-light);
+  color: var(--brand);
+  font-size: 23rpx;
+  font-weight: 700;
+}
+.cooking-step__text { flex: 1; min-width: 0; color: var(--ink); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cooking-step__empty { color: var(--muted); }
+.cooking-tips { margin-top: 18rpx; padding: 14rpx 17rpx; border-radius: var(--field-radius); background: var(--hero-light); }
+.cooking-tips__title { display: block; color: var(--accent); font-weight: 650; }
+.cooking-tips__text { display: block; margin-top: 4rpx; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }

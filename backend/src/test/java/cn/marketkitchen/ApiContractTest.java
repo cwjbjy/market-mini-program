@@ -24,12 +24,15 @@ import cn.marketkitchen.image.LocalImageStorage;
 import cn.marketkitchen.service.CategoryService;
 import cn.marketkitchen.service.OrderService;
 import cn.marketkitchen.vo.CategoryVO;
+import cn.marketkitchen.vo.CookingInstructions;
+import cn.marketkitchen.vo.OrderVO;
 import cn.marketkitchen.vo.RecipeVO;
 import cn.marketkitchen.web.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,8 +60,24 @@ class ApiContractTest {
     }
 
     @Test
+    void exposesOrderPagesAndReadsVisibleOrderDetailsById() throws Exception {
+        var order = new OrderVO("order:old", "2026-01-01", Instant.parse("2026-01-01T00:00:00Z"), List.of());
+        when(orders.page("order:cursor")).thenReturn(new OrderVO.Page(List.of(order), "order:old"));
+        when(orders.detail(order.id())).thenReturn(order);
+        when(orders.detail("hidden")).thenThrow(BusinessException.notFound("订单不存在"));
+        mvc.perform(get("/api/orders/page").param("cursor", "order:cursor"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orders[0].id").value(order.id()))
+                .andExpect(jsonPath("$.data.nextCursor").value(order.id()));
+        mvc.perform(get("/api/orders/{id}", order.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(order.id()));
+        mvc.perform(get("/api/orders/hidden")).andExpect(status().isNotFound());
+    }
+
+    @Test
     void listsCategoriesWithNativeFieldNames() throws Exception {
-        var recipe = new RecipeVO("r1", "c1", "土豆丝", "/static/images/market/potato.jpg", "土豆", "切丝炒熟", 4);
+        var recipe = new RecipeVO("r1", "c1", "土豆丝", "/static/images/market/potato.jpg", "土豆", instructions("切丝炒熟"), 4);
         when(categoryService.categories()).thenReturn(List.of(new CategoryVO("c1", "家常菜", recipe.image(), List.of(recipe))));
         mvc.perform(get("/api/categories"))
                 .andExpect(status().isOk())
@@ -139,4 +158,8 @@ class ApiContractTest {
         mvc.perform(get("/static/images/market/legacy.png")).andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_JPEG));
     }
+    private static CookingInstructions instructions(String text) {
+        return new CookingInstructions(List.of(new CookingInstructions.Step("step-1", text)), List.of());
+    }
+
 }

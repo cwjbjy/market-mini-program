@@ -5,18 +5,20 @@
   </view>
 
   <view wx:if="{{orders.length}}" class="orders-list">
-    <view wx:for="{{orders}}" wx:key="id" class="order-card panel">
-      <view class="order-card__head">
+    <view wx:for="{{orders}}" wx:key="id" class="order-card panel" data-id="{{item.id}}" bindtap="openOrder">
+      <button class="order-card__head" aria-label="查看订单详情，{{item.date}}">
         <view class="order-card__dot"></view>
         <text class="order-card__date">{{item.date}}</text>
         <text class="order-card__total">共 {{item.quantity}} 份</text>
-      </view>
+        <t-icon class="order-card__arrow" name="chevron-right" size="32rpx" aria-hidden="true" />
+      </button>
       <view class="order-card__body">
         <view wx:for="{{item.items}}" wx:for-item="recipe" wx:key="rowKey" class="order-item">
-          <view class="order-item__image image-placeholder" data-url="{{recipe.imageUrl}}" bindtap="showImage" aria-label="查看{{recipe.name}}图片">
+          <view wx:if="{{recipe.imageUrl}}" class="order-item__image image-placeholder" data-url="{{recipe.imageUrl}}" catchtap="showImage" role="button" aria-label="查看{{recipe.name}}图片">
             <t-icon name="image" size="34rpx" aria-hidden="true" />
             <image wx:if="{{recipe.imageUrl}}" src="{{recipe.imageUrl}}" mode="aspectFill" lazy-load />
           </view>
+          <view wx:else class="order-item__image image-placeholder" aria-hidden="true"><t-icon name="image" size="34rpx" /></view>
           <view class="order-item__name">
             <text>{{recipe.name}}</text>
             <text wx:if="{{recipe.ingredients}}" class="order-item__ingredients">{{recipe.ingredients}}</text>
@@ -26,13 +28,25 @@
       </view>
       <view class="order-card__foot">
         <text>{{item.items.length}} 道菜</text>
-        <button class="quiet delete-button" disabled="{{!!deletingId}}" data-id="{{item.id}}"
-          bindtap="removeOrder" loading="{{deletingId === item.id}}">
-          <view class="action-content"><t-icon name="delete" size="28rpx" aria-hidden="true" /><text>删除</text></view>
+        <button class="order-delete {{deletingId === item.id ? 'order-delete--busy' : ''}}"
+          disabled="{{!!deletingId}}" data-id="{{item.id}}" catchtap="removeOrder"
+          hover-class="order-delete--pressed" aria-label="{{deletingId === item.id ? '正在处理删除' : '删除订单'}}">
+          <view class="order-delete__label">
+            <t-icon wx:if="{{deletingId !== item.id}}" name="delete" size="28rpx" aria-hidden="true" />
+            <text>{{deletingId === item.id ? '处理中…' : '删除'}}</text>
+          </view>
         </button>
       </view>
     </view>
-    <text class="orders-end">最多展示最近 50 条</text>
+    <view class="orders-end">
+      <text wx:if="{{loadingMore}}">正在加载更多…</text>
+      <block wx:elif="{{moreError}}">
+        <text>{{moreError}}</text>
+        <button class="secondary orders-retry" bindtap="loadMore">重试</button>
+      </block>
+      <text wx:elif="{{!nextCursor}}">已显示全部订单</text>
+      <button wx:else class="quiet orders-retry" bindtap="loadMore">加载更多</button>
+    </view>
   </view>
 
   <view wx:else class="state orders-empty">
